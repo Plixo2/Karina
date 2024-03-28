@@ -1,0 +1,14 @@
+let a = 1
+let b = 2
+let c = a + b
+let w = 99
+let d = c + w
+#let ununsed = 1
+#let double = d + d
+#let misc = a + 1
+#let misc = 1 + a
+#let misc = 4 + 1
+#let double = d + d
+#let Some = d
+#let Thing = Some
+d

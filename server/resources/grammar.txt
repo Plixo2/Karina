@@ -1,0 +1,12 @@
+# ! means that the token or rule is required, so the parser throws an error if it cannot be matched.
+# ? means that the token or rule is optional
+# * means that the token or rule can be repeated zero or more times
+# Use parentheses to create sub expressions
+
+program ::= let* id!
+let ::= "let" id! "="! expression!
+expression ::= (id "+" id!) | id | number
+ 
+
+id ::= "word"
+number ::= "number" 

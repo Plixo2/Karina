@@ -25,13 +25,13 @@ class FrontEnd(val grammarFile: InternalFile) {
             case RuleResult.RuleMatch(entry) => {
                 entry.assertType("program")
                 println("High Level:")
-                val statements = HLParser.parse_program(entry)
+                val statements = HLParser.parseProgram(entry)
                 statements.foreach(println(_))
                 println("Typed:")
-                val typed = TypedParser.parse_program(statements)
+                val typed = TypedParser.parseProgram(statements)
                 val program = Program(entry.region, typed)
                 program.statements.foreach(println(_))
-                Checker.check_program(program)
+                Checker.checkProgram(program)
 
                 val environment = Environment(program)
                 val resultOfProgram = environment.evalValue()

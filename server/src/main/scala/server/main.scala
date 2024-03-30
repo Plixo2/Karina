@@ -1,9 +1,9 @@
-import server.{FrontEnd, read_file}
+import server.{FrontEnd, readFile}
 
 @main
 def main(): Unit = {
-    val grammar_file = read_file("resources/grammar.txt")
-    val test_file = read_file("resources/test.txt");
-    val frontEnd = FrontEnd(grammar_file)
-    frontEnd.parse(test_file)
+    val grammarFile = readFile("resources/grammar.txt")
+    val testFile = readFile("resources/test.txt");
+    val frontEnd = FrontEnd(grammarFile)
+    frontEnd.parse(testFile)
 }

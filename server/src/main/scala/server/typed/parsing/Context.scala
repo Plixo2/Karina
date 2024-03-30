@@ -6,15 +6,15 @@ class Context {
     private var variables: List[Variable] = List[Variable]()
     
     
-    def find_variable(name: String): Option[Variable] = {
+    def findVariable(name: String): Option[Variable] = {
         variables.find(_.name == name)
     }
     
-    def contains_variable(name: String): Boolean = {
+    def containsVariable(name: String): Boolean = {
         variables.exists(_.name == name)
     }
     
-    def push_variable(variable: Variable): Unit = {
+    def pushVariable(variable: Variable): Unit = {
         variables = variables :+ variable
     }
 }

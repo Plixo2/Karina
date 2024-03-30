@@ -5,23 +5,23 @@ import server.parser.Node
 
 object HLParser {
 
-    def parse_program(node: Node): List[HLStatement] = {
+    def parseProgram(node: Node): List[HLStatement] = {
         node.assertType("program");
-        val statements = node.map("let", parse_let)
+        val statements = node.map("let", parseLet)
         val last = node("id").expect("variable terminal")
         statements :+ HLVariableTerminator(last.id(), last.region)
     }
 
-    private def parse_let(node: Node): HLStatement = {
+    private def parseLet(node: Node): HLStatement = {
         node.assertType("let");
 
         val name = node("id").expect("identifier on let statement").id()
         val expressionNode = node("expression").expect("expression on let statement")
-        val expression = parse_expression(expressionNode)
+        val expression = parseExpression(expressionNode)
         HLLet(name, expression, node.region)
     }
 
-    private def parse_expression(node: Node): HLExpression = {
+    private def parseExpression(node: Node): HLExpression = {
         node.assertType("expression");
         if (node.has("number")) {
             val numberNode = node("number").get();

@@ -18,7 +18,7 @@ class Environment(val program: Program) {
     
     def evalValue(): Integer = {
         restart();
-        while (!has_stopped()) {
+        while (!hasStopped()) {
             step()
         }
         evaluatedValue match {
@@ -32,7 +32,7 @@ class Environment(val program: Program) {
     }
 
     def step(): Unit = {
-        if (has_stopped()) {
+        if (hasStopped()) {
             return
         }
         val statement = statements(pc)
@@ -58,13 +58,13 @@ class Environment(val program: Program) {
                       s"Variable $variable has already been bound"
                     )
                 }
-                val result = eval_expression(value)
+                val result = evalExpression(value)
                 bindings(variable) = result
             }
         }
     }
 
-    def has_stopped(): Boolean = {
+    def hasStopped(): Boolean = {
         pc > maxSteps
     }
 
@@ -72,7 +72,7 @@ class Environment(val program: Program) {
         evaluatedValue
     }
 
-    private def eval_expression(expression: Expression): Integer = {
+    private def evalExpression(expression: Expression): Integer = {
         expression match {
             case Addition(left, right, regionA) => {
                 val leftValue = bindings.get(left)

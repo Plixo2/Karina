@@ -1,7 +1,7 @@
 package server.files
 
 import server.lexer.{Position, Region}
-import server.read_file
+import server.readFile
 
 
 sealed trait InternalFile {

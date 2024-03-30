@@ -13,7 +13,7 @@ object Fs extends js.Object {
 }
 
 
-def read_file(path: String): InternalFile = {
+def readFile(path: String): InternalFile = {
   val file = Fs.readFileSync(path, "utf8")
   RealFile(file, path)
 }

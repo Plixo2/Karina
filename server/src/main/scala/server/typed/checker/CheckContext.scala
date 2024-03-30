@@ -14,7 +14,7 @@ class CheckContext {
         closedVariables = closedVariables :+ variable
     }
 
-    def was_closed(variable: Variable): Boolean = closedVariables.contains(variable)
+    def wasClosed(variable: Variable): Boolean = closedVariables.contains(variable)
 
     def getOpenVariables(): List[Variable] = openVariables
 }

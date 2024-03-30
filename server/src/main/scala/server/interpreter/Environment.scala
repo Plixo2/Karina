@@ -10,6 +10,7 @@ class Environment(val program: Program) {
     private val maxSteps = program.statements.length - 1
     private val bindings = scala.collection.mutable.Map[Variable, Integer]()
     private var pc = 0
+    private var evaluatedValue = Option.empty[Integer]
     def restart(): Unit = {
         bindings.clear()
         pc = 0;
@@ -20,21 +21,11 @@ class Environment(val program: Program) {
         while (!has_stopped()) {
             step()
         }
-        val last = statements(maxSteps)
-        last match {
-            case VariableTerminal(variable, regionA) => {
-                bindings.get(variable) match {
-                    case Some(value) => value
-                    case _ => {
-                        throw new LanguageRuntimeException(
-                            "VariableTerminal must be bound"
-                        )
-                    }
-                }
-            }
-            case _ => {
+        evaluatedValue match {
+            case Some(value) => value
+            case None => {
                 throw new LanguageRuntimeException(
-                    "Last statement must be a VariableTerminal"
+                  "No value has been evaluated"
                 )
             }
         }
@@ -58,6 +49,7 @@ class Environment(val program: Program) {
                     )
                 }
                 pc += 1
+                evaluatedValue = Some(bindings(variable))
             }
             case Let(variable, value, regionA) => {
                 pc += 1
@@ -74,6 +66,10 @@ class Environment(val program: Program) {
 
     def has_stopped(): Boolean = {
         pc > maxSteps
+    }
+
+    def value: Option[Integer] = {
+        evaluatedValue
     }
 
     private def eval_expression(expression: Expression): Integer = {

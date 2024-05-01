@@ -1,0 +1,12 @@
+import test.String
+import test.Entity
+
+
+object Entity<S>(s: test.String<S>) {
+
+}
+
+object String<S>(length: int) {
+
+}
+

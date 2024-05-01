@@ -1,0 +1,64 @@
+import test.Entity
+import test.EntityPlayer
+
+
+object Entity() {
+    virtual fn move(x: float, y: float, z: float) -> void {
+        println("Moving")
+    }
+    override fn move(x: float, y: float, z: float) {
+        println("Moving")
+    }
+}
+
+object EntityPlayer() extends Entity() {
+    jump: fn() -> void = fn() {
+        self.move(0, 0.42, 0)
+    }
+}
+
+
+fn main() -> void {
+    let find = list[0]
+    if find is Some(value) {
+        print("Found" + value)
+    } else {
+        print("Not found")
+    }
+
+    while true {
+        for i in players {
+            let a = 1 + 2
+            let c = (1 * 2 + 4) < 5 && 6 >= 1999
+            if c {
+                println("Hello")
+            } else {
+                let b = 1
+            }
+        }
+    }
+}
+
+
+
+object Option<T>() {
+    fn unwrap() -> T {
+        if self is Some(value) {
+            value
+        } else {
+            panic("Option is None")
+        }
+    }
+}
+
+
+object Some<T>() extends Option<T>() {
+    value: T = 1
+}
+object None<T>() extends Option<T>() {
+
+}
+
+native fn println(string: string) -> void {
+
+}

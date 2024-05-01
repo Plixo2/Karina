@@ -3,10 +3,65 @@
 # * means that the token or rule can be repeated zero or more times
 # Use parentheses to create sub expressions
 
-program ::= let* id!
-let ::= "let" id! "="! expression!
-expression ::= (id "+" id!) | id | number
- 
+unit ::= item*
+item ::= import | class | function
+
+import ::= "import" dotWordChain!
+
+function ::= functionModifier? "fn" id! genericHintDefinition? "("! parameterList! ")"! ("->" type!)? expression!
+functionModifier ::= "override" | "native" | "virtual"
+parameterList ::= (parameter ("," parameter!)*)?
+parameter ::= id ":"! type!
+
+class ::= "object" id! genericHintDefinition? "("! parameterList! ")"! ("extends" type! "("! initList! ")"! )? "{"! (field | function)* "}"!
+field ::= id ":"! type! "="! expression!
+
+
+type ::= "void" | "int" | "float" | "bool" | dotWordChain genericHint? | arrayType | functionType
+arrayType ::= "[" type! "]"!
+functionType ::= "fn" "("! typeList! ")"! ("->" type!)?
+typeList ::= (type ("," type!)*)?
+
+dotWordChain ::= id ("." id!)*
+commaWordChain ::= id ("," id!)*
+
+genericHint ::= "<" (type ("," type!)* )? ">"!
+genericHintDefinition ::= "<" (id ("," id!)* )? ">"!
+
+expressionList ::= (expression ("," expression!)*)?
+
+expression ::= variableDefinition | conditionalOrExpression | closure | "return" expression?
+variableDefinition ::= "let" id! (":" type!)? "="! expression!
+conditionalOrExpression ::= conditionalAndExpression ("||" conditionalOrExpression!)?
+conditionalAndExpression ::= equalityExpression ("&&" conditionalAndExpression!)?
+equalityExpression ::= relationalExpression (("==" | "!=") equalityExpression!)?
+relationalExpression ::= additiveExpression (("<" | ">" | "<=" | ">=") relationalExpression!)?
+additiveExpression ::= multiplicativeExpression (("+" | "-") additiveExpression!)?
+multiplicativeExpression ::= unaryExpression (("*" | "/" | "%") multiplicativeExpression!)?
+unaryExpression ::= ("-" | "!") factor! | factor
+factor ::= object postFix* ("=" expression!)?
+postFix ::= "." id! | "(" expressionList! ")"! | "[" expression! "]"!
+object ::= if | while | for | block | "(" expression! ")"! | number | "break" | id | string | "self" | "super" | new | "true" | "false"
+
+
+new ::= "new" type! "{"! initList! "}"!
+initList ::= (memberInit ("," memberInit!)*)?
+memberInit ::= id ":"! expression!
+
+closure ::= "fn" "("! closureTypeList! ")"! ("->" type!)? expression
+closureTypeList ::= (closureType ("," closureType!)*)?
+closureType ::= id (":" type!)?
+
+
+if ::= "if" expression! ("is" type! "("! commaWordChain? ")"!)? block! branchOpt?
+branchOpt ::= "else" expression!
+
+for ::= "for" id! "in"! expression! block!
+while ::= "while" expression! block!
+
+block ::= "{" expression* "}"!
 
 id ::= "word"
-number ::= "number" 
+number ::= "number"
+string ::= "string"
+

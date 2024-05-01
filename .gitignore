@@ -491,3 +491,4 @@ server/target/streams/test/scalacOptions/_global/streams/out
 server/target/streams/test/unmanagedClasspath/_global/streams/export
 server/target/streams/test/unmanagedClasspath/_global/streams/out
 server/target/streams/test/unmanagedJars/_global/streams/export
+server/.idea/scala_compiler.xml

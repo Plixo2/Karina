@@ -63,7 +63,7 @@ object WordToken extends Token {
     def matches(content: String, index: Int): TokenMatch = {
         if (content(index).isLetter) {
             var i = index + 1
-            while (i < content.length && content(i).isLetter) {
+            while (i < content.length && (content(i).isLetter || content(i).isDigit || content(i) == '_')) {
                 i += 1
             }
             TokenMatch.Matched(i)
@@ -105,7 +105,7 @@ case class CharToken(char: Char) extends Token {
 }
 
 object StringToken extends Token {
-    def alias: String = "string"
+    def alias: String = "stringliteral"
     def matches(content: String, index: Int): TokenMatch = {
         if (content(index) == '"') {
             var i = index + 1
@@ -126,7 +126,7 @@ object StringToken extends Token {
 object CommentToken extends Token {
     def alias: String = "comment"
     def matches(content: String, index: Int): TokenMatch = {
-        if (content.regionMatches(index, "#", 0, 1)) {
+        if (content.regionMatches(index, "//", 0, 2)) {
             TokenMatch.Matched(content.length)
         } else {
             TokenMatch.Unmatched()

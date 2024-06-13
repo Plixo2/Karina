@@ -1,12 +1,10 @@
-import test.String
-import test.Entity
 
-
-object Entity<S>(s: test.String<S>) {
-
+fn main(input: int) -> int {
+    let a = 1
+    let test = if true {
+        1
+    } else {
+        0
+    }
+    test
 }
-
-object String<S>(length: int) {
-
-}
-

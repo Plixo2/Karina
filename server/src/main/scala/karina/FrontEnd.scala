@@ -1,17 +1,20 @@
 package karina
 
+import karina.codegen.bin.{BinCodeGen, BinPrinterPlain}
 import karina.files.{InternalFile, ObjectPath, readFile}
 import karina.highlevel.*
 import karina.lexer.*
 import karina.parser.*
 import karina.typed.*
-import karina.types.*;
+import karina.types.*
 
-class FrontEnd() {
+import scala.collection.parallel.CollectionConverters.*
 
-    def parse(file: InternalFile): Unit = {
+object FrontEnd {
+
+    def parse(file: InternalFile, grammarFile: InternalFile): Unit = {
         val languageTokens = LanguageToken.allTokens()
-        val grammar = Grammar(readFile("resources/grammar.txt")).parse(languageTokens)
+        val grammar = Grammar(grammarFile).parse(languageTokens)
         val tokenizer = Tokenizer(languageTokens)
         val entryRule = grammar.findRule("unit").expect(s"Rule 'unit'")
         val parser = Parser(entryRule)
@@ -25,112 +28,78 @@ class FrontEnd() {
         }
         val unitNode = result.get
         val hlUnit = HLParser.parse(unitNode)
-        val root = CompilePackage("root", List(NodeUnit("test", hlUnit)), List())
-        test(root, None, root)
+        val rootPackage = HLPackage("root", List(("test", hlUnit)), List())
+        val default = toTypedRoot(rootPackage)
+        val types = TypeResolver.resolve(default)
+        val variables = VariableResolver.resolve(types)
+        val typed = TypeChecker.resolve(variables)
+        val code = BinCodeGen.generate(typed)
+        BinPrinterPlain.write(code, "resources/test.krnac")
     }
 
-    private def test(
-        root: CompilePackage,
-        location: Option[ObjectPath],
-        compilePackage: CompilePackage
-    ): CompilePackage = {
-        CompilePackage(
-          compilePackage.name(),
-          compilePackage.units.map(ref =>
-              testUnit(root, location.map(_.add(ref.name())).getOrElse(ObjectPath(List(ref.name()))), ref)
-          ),
-          compilePackage.subPackages.map(ref =>
-              test(root, Some(location.map(_.add(ref.name())).getOrElse(ObjectPath(List(ref.name())))), ref)
-          )
+    private def toTypedRoot(hlPackage: HLPackage): DefaultPackage = {
+        val subPath = ObjectPath(List(), allowEmpty = true)
+        DefaultPackage(
+          hlPackage.name,
+          subPath,
+          hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
+          hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
         )
     }
-    private def testUnit(root: CompilePackage, location: ObjectPath, compileUnit: CompileUnit): CompileUnit = {
-        val nodeUnit = compileUnit.asInstanceOf[NodeUnit].hlUnit
-        val imports = nodeUnit.imports
-        for (elem <- imports) {
-            root.locateClass(elem.path) match {
-                case Some(value) => {
-                    println(s"Found import '${elem}'")
-                }
-                case None =>
-                    throw new LanguageException(
-                      elem.region,
-                      s"Import '${elem}' not found"
-                    )
-            }
-        }
-        for (elem <- nodeUnit.classes) {
-            transformClass(root, location.add(elem.name), elem)
-        }
 
-        compileUnit
+    private def toTypedPackage(path: ObjectPath, hlPackage: HLPackage): DefaultPackage = {
+        val subPath = path.add(hlPackage.name)
+        DefaultPackage(
+          hlPackage.name,
+          subPath,
+          hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
+          hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
+        )
     }
 
-    private def transformClass(root: CompilePackage, location: ObjectPath, hlClass: HLClass): typed.Class = {
-        val genericNames = hlClass.genericHint.map(_.names).getOrElse(List())
-        val genericTypes = genericNames.map(GenericType(_, GenericSource.Class(location)))
-        val lookup = TypeLookup(root, genericTypes, List())
-        val parameters = hlClass.parameter.map(param => (param.name, transformType(lookup, param.tpe)))
-        val fields = hlClass.fields.map(field => Field(field.name, transformType(lookup, field.tpe), field.value))
-        val functions = hlClass.functions.map(func => NodeFunction(func))
-        ClassWithOutInheritance(hlClass.name, genericTypes, parameters, fields, functions, hlClass.superClass)
+    private def toTypedUnit(path: ObjectPath, name: String, hlUnit: HLUnit): DefaultUnit = {
+        val subPath = path.add(name)
+        DefaultUnit(
+          hlUnit.region,
+          name,
+          subPath,
+          hlUnit.imports.par.map(ref => Import(ref.region, ref.path)).toList,
+          hlUnit.classes.par.map(ref => toTypedClass(subPath, ref)).toList,
+          hlUnit.functions.par.map(ref => toTypedFunction(subPath, true, ref)).toList
+        )
+    }
+    private def toTypedClass(path: ObjectPath, hlClass: HLClass): DefaultClass = {
+        val subPath = path.add(hlClass.name)
+        val definedGenerics = hlClass.genericHint
+            .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Class(subPath))))
+            .getOrElse(List())
+        val parameters = hlClass.parameters.map(ref => Parameter(ref.region, ref.name, ref.tpe, None))
+        val fields = hlClass.fields.map(ref => { Field(ref.region, ref.name, ref.tpe, ref.value) })
+        val functions = hlClass.functions.map(ref => toTypedFunction(subPath, false, ref))
+        val superClass = hlClass.superClass.map(ref => {
+            Inheritance(ref.region, ref.tpe, ref.memberInits)
+        })
+        DefaultClass(hlClass.region, hlClass.name, subPath, definedGenerics, parameters, fields, functions, superClass)
     }
 
-    private def transformType(lookup: TypeLookup, hlType: HLType): Type = {
-        hlType match {
-            case HLClassType(region, path, genericHint) => {
-                lookup.lookup(HLClassType(region, path, genericHint))
-            }
-            case HLArrayType(region, inner) => ArrayType(transformType(lookup, inner))
-            case HLFunctionType(region, parameter, returnType) => {
-                throw new LanguageException(
-                  region,
-                  s"Function types are not supported"
-                )
-            }
-            case HLInt()   => IntegerType()
-            case HLFloat() => FloatType()
-            case HLBool()  => BooleanType()
-            case HLVoid()  => VoidType()
-        }
+    private def toTypedFunction(path: ObjectPath, isStatic: Boolean, hlFunction: HLFunction): DefaultFunction = {
+        val subPath = path.add(hlFunction.name)
+        val returnType = hlFunction.returnType
+        val parameters = hlFunction.parameters.map(ref => Parameter(ref.region, ref.name, ref.tpe, None))
+        val definedGenerics = hlFunction.genericHint
+            .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Function(subPath))))
+            .getOrElse(List())
+        DefaultFunction(
+          hlFunction.region,
+          isStatic,
+          hlFunction.name,
+            subPath,
+          hlFunction.modifier,
+          returnType,
+          parameters,
+          definedGenerics,
+          hlFunction.expression
+        )
     }
 
-    private case class TypeLookup(
-        root: CompilePackage,
-        generics: List[GenericType],
-        imports: List[HLImport]
-    ) {
-        def lookup(classType: HLClassType): Type = {
-            classType match {
-                case HLClassType(region, path, genericHint) => {
-                    if (path.length == 1) {
-                        generics.find(_.name == path.head) match {
-                            case Some(value) => return value
-                            case None        => {}
-                        }
-                    }
-                    root.locateClass(path) match {
-                        case Some(value) => {
-                            val genOfClass = value.definedGeneric()
-                            if (genericHint.map(_.types.length).getOrElse(0) != genOfClass.length) {
-                                throw new LanguageException(
-                                  region,
-                                  s"Class '${path}' expects ${genOfClass.length} generic parameters"
-                                )
-                            }
-                            val transformedTypes =
-                                genericHint.map(_.types.map(transformType(this, _))).getOrElse(List())
-                            val mapping = genOfClass.zip(transformedTypes)
-                            ObjectType(path, mapping.toMap)
-                        }
-                        case None =>
-                            throw new LanguageException(
-                              region,
-                              s"Class '${path}' not found"
-                            )
-                    }
-                }
-            }
-        }
-    }
 }

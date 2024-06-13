@@ -3,8 +3,10 @@ package karina.highlevel
 import karina.files.ObjectPath
 import karina.highlevel.HLParser.parseGenericHint
 import karina.parser.Node
+import karina.types.{ArrayType, BooleanType, FloatType, FunctionType, IntegerType, BaseType, ObjectTypeDefault, StringType, Type, VoidType}
 import karina.{LanguageException, parser}
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.collection.mutable.HashMap
 
@@ -36,7 +38,11 @@ object HLParser {
         node.assertType("class")
         val name = node.id()
         val genHint = node.get("genericHintDefinition").map(parseGenericHintDefinition)
-        val parameters = parseParameterList(node("parameterList"))
+        val parameters = if (node.has("parameterList"))  {
+            parseParameterList(node("parameterList"))
+        } else {
+            List()
+        }
         val fields = node.map(
           "field",
           field => {
@@ -51,7 +57,7 @@ object HLParser {
             .get("type")
             .map(tye => {
                 val superType = HLTypeParser.parse(node("type"))
-                val initMembers = parseInitList(node("initList"))
+                val initMembers = HLExpressionParser.parseExpressionList(node("expressionList"))
                 HLClassInheritance(tye.region, superType, initMembers)
             })
         HLClass(node.region, name, genHint, parameters, superClass, fields, functions)
@@ -76,10 +82,14 @@ object HLParser {
             }
         }
         val name = node.id()
-        val expression = HLExpressionParser.parse(node("expression"))
+        val expression = if (node.has("block")) {
+            HLExpressionParser.parseBlock(node("block"))
+        } else {
+            HLExpressionParser.parse(node("expression"))
+        }
         val genHint = node.get("genericHintDefinition").map(parseGenericHintDefinition)
         val parameters = parseParameterList(node("parameterList"))
-        val returnType = node.get("type").map(HLTypeParser.parse).getOrElse(HLVoid())
+        val returnType = node.get("type").map(HLTypeParser.parse).getOrElse(VoidType(node("id").region))
 
         HLFunction(node.region, name, mods, genHint, parameters, returnType, expression)
     }
@@ -109,13 +119,13 @@ object HLParser {
     }
 
     def parseWordChain(node: Node): ObjectPath = {
-        ObjectPath(node.getAll("id").map(_.id()))
+        ObjectPath(node.getAll("id").map(_.id()), allowEmpty = false)
     }
 
-    def parseGenericHint(node: Node): HLGenericHint = {
+    def parseGenericHint(node: Node): List[Type] = {
         node.assertType("genericHint")
         val types = node.map("type", f => HLTypeParser.parse(f))
-        HLGenericHint(node.region, types)
+        types
     }
 
     private def parseGenericHintDefinition(node: Node): HLGenericDefinition = {
@@ -126,28 +136,32 @@ object HLParser {
 }
 object HLTypeParser {
 
-    def parse(node: Node): HLType = {
+    def parse(node: Node): Type = {
         node.assertType("type")
         if (node.has("void")) {
-            HLVoid()
+            VoidType(node.region)
         } else if (node.has("int")) {
-            HLInt()
+            IntegerType(node.region)
         } else if (node.has("float")) {
-            HLFloat()
-        } else if (node.has("bool")) {
-            HLBool()
+            FloatType(node.region)
+        } else if (node.has("string")) {
+            StringType(node.region)
+        }else if (node.has("bool")) {
+            BooleanType(node.region)
         } else if (node.has("dotWordChain")) {
             val path = HLParser.parseWordChain(node("dotWordChain"))
-            val genericHint = node.get("genericHint").map(parseGenericHint)
-            HLClassType(node.region, path, genericHint)
+            val genericHint = node.get("genericHint").map(parseGenericHint).getOrElse(List())
+            ObjectTypeDefault(node.region, path, genericHint)
         } else if (node.has("arrayType")) {
             val arrayType = node("arrayType")("type")
-            HLArrayType(node.region, parse(arrayType))
+            ArrayType(node.region, parse(arrayType))
         } else if (node.has("functionType")) {
             val functionType = node("functionType")
-            val returnType = functionType.get("type").map(parse).getOrElse(HLVoid())
+            val returnType = functionType.get("type").map(parse).getOrElse(VoidType(functionType.region))
             val parameters = functionType("typeList").map("type", parse)
-            HLFunctionType(node.region, parameters, returnType)
+            FunctionType(node.region, parameters, returnType)
+        } else if (node.has("?")) {
+            BaseType(node.region)
         } else {
             throw new LanguageException(node.region, "Unknown type")
         }
@@ -166,8 +180,8 @@ object HLExpressionParser {
             val expression = parse(varDef("expression"))
             HLVarDef(node.region, name, type_, expression)
         } else if (node.has("return")) {
-            if (node("return").has("expression")) {
-                val expression = parse(node("return")("expression"))
+            if (node.has("expression")) {
+                val expression = parse(node("expression"))
                 Return(node.region, Some(expression))
             } else {
                 Return(node.region, None)
@@ -231,30 +245,66 @@ object HLExpressionParser {
             factor
         }
     }
+    
+   
 
     private def parseFactor(node: Node): Expression = {
         node.assertType("factor")
-        parseObject(node("object"))
+        val left = parsePostFix(parseObject(node("object")), node.getAll("postFix"))
+        if (node.has("expression")) { 
+            Assign(node.region, left, parse(node("expression")))
+        } else {
+            left
+        }
     }
+
+    @tailrec
+    private def parsePostFix(prev: Expression, nodes: List[Node]): Expression = {
+        if (nodes.isEmpty) {
+            return prev
+        }
+        val node = nodes.head
+        node.assertType("postFix")
+        val expression = if (node.has("id")) {
+            HLDotName(node.region, prev, node.id())
+        } else if (node.has("expressionList")) {
+            val expressions = node("expressionList")
+            HLCall(node.region, prev, parseExpressionList(expressions))
+        } else if (node.has("expression")) {
+            val index = parse(node("expression"))
+            HLArrayIndex(node.region, prev, index)
+        } else {
+            throw new LanguageException(node.region, "Unknown postFix")
+        }
+        parsePostFix(expression, nodes.tail)
+    }
+
+
     private def parseObject(node: Node): Expression = {
         node.assertType("object")
         if (node.has("if")) {
             val ifNode = node("if")
-            val expression = parse(ifNode("expression"))
-            val thenExpression = parse(ifNode("expression"))
+            val condition = parse(ifNode("expression"))
+            val thenExpression = parseBlock(ifNode("block"))
             val elseExpression = ifNode.get("branchOpt").map(ref => parse(ref("expression")))
 
             val caseCheck = ifNode
                 .get("type")
                 .map(ref => {
+                    val caseCheck = if (ifNode.has("id")) {
+                        HLCaseCheck.Name(ifNode.id())
+                    } else if (ifNode.has("commaWordChain")) {
+                        HLCaseCheck.Destructor(parseCommaWordChain(ifNode("commaWordChain")))
+                    } else {
+                        HLCaseCheck.None()
+                    }
                     val type_ = HLTypeParser.parse(ref)
-                    val variables = parseCommaWordChain(ifNode("commaWordChain"))
-                    HLBranchCaseCheck(ref.region, type_, variables)
+                    HLBranchCaseCheck(ref.region, type_, caseCheck)
                 })
 
             HLBranch(
               node.region,
-              expression,
+              condition,
               caseCheck,
               thenExpression,
               elseExpression
@@ -263,7 +313,7 @@ object HLExpressionParser {
             val whileNode = node("while")
             val expression = parse(whileNode("expression"))
             val block = parseBlock(whileNode("block"))
-            HLWhile(node.region, expression, block)
+            While(node.region, expression, block)
         } else if (node.has("for")) {
             val forNode = node("for")
             val varName = forNode.id()
@@ -272,6 +322,9 @@ object HLExpressionParser {
             HLFor(node.region, varName, iter, block)
         } else if (node.has("block")) {
             parseBlock(node("block"))
+        } else if (node.has("array")) {
+            val array = node("array")
+            Array(array.region, parseExpressionList(array("expressionList")))
         } else if (node.has("expression")) {
             parse(node("expression"))
         } else if (node.has("number")) {
@@ -279,7 +332,7 @@ object HLExpressionParser {
             if (numStr.contains(".")) {
                 numStr.toDoubleOption match {
                     case Some(value) => {
-                        return FloatLiteral(node.region, value)
+                        FloatLiteral(node.region, value)
                     }
                     case None => {
                         throw new LanguageException(node.region, "Invalid float number")
@@ -294,14 +347,14 @@ object HLExpressionParser {
                         throw new LanguageException(node.region, "Invalid int number")
                     }
                 }
-
             }
         } else if (node.has("break")) {
             Break(node.region)
         } else if (node.has("id")) {
-            HLIdentifier(node.region, node.id())
-        } else if (node.has("string")) {
-            StringLiteral(node.region, node.string())
+            HLName(node.region, node.id())
+        } else if (node.has("stringLiteral")) {
+            val content = node.string()
+            StringLiteral(node.region, content.substring(1, content.length - 1))
         } else if (node.has("self")) {
             HLSelf(node.region)
         } else if (node.has("super")) {
@@ -313,13 +366,18 @@ object HLExpressionParser {
         } else if (node.has("new")) {
             val returnNode = node("new")
             val tpe = HLTypeParser.parse(returnNode("type"))
-            val initList = HLParser.parseInitList(returnNode("initList"))
+            val initList = returnNode.get("initList").map(HLParser.parseInitList).getOrElse(List())
             HLNew(node.region, tpe, initList)
         } else {
             throw new LanguageException(node.region, "Unknown object")
         }
     }
-    private def parseBlock(node: Node): Expression = {
+    def parseExpressionList(node: Node): List[Expression] = {
+        node.assertType("expressionList")
+        node.map("expression", parse)
+    }
+
+    def parseBlock(node: Node): Expression = {
         node.assertType("block")
         val expressions = node.map("expression", parse)
         HLBlock(node.region, expressions)
@@ -333,6 +391,7 @@ object HLExpressionParser {
     private def getBIOperator(node: Node): BinaryOP = {
         val mappings = mutable.HashMap[String, BinaryOP]()
         mappings += ("+" -> BinaryOP.Add)
+        mappings += ("&" -> BinaryOP.Concat)
         mappings += ("-" -> BinaryOP.Subtract)
         mappings += ("*" -> BinaryOP.Multiply)
         mappings += ("/" -> BinaryOP.Divide)

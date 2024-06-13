@@ -1,0 +1,45 @@
+
+fn main(a: int, b: int) {
+    let c = a + b
+    callMe(c)
+    let name = "Hello"
+}
+
+fn callMe(c: int) -> int {
+    let array = [new Foo { size: 10 }]
+    let first = array[0].size * 100
+    let foo = new Foo { size: 10 }
+    foo.make()
+    let func: fn() -> int = foo.callDynamically
+    let value = func()
+
+    return first + c
+}
+
+object Foo(size: int) {
+    fn make() -> void {
+        let a = 0.3333333
+        while a < 1000.0 {
+            println("Foo::make")
+            a = a + 1.0
+        }
+       // let array = []
+        //array[0] = array
+
+        println("Foo::new")
+    }
+    fn callDynamically() -> int {
+        return if true {
+            10
+        } else {
+            20
+        }
+    }
+    fn nothing() {}
+}
+
+
+
+native fn println(message: string) {
+
+}

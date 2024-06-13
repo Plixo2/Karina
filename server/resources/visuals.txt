@@ -62,3 +62,70 @@ object None<T>() extends Option<T>() {
 native fn println(string: string) -> void {
 
 }
+
+
+
+object List<T>() {
+    data: [T] = []
+    capacity: int = 0
+    length: int = data.length
+    info: String<int> = "List of items"
+
+    fn add(item: T) {
+       // if self.length == self.capacity {
+       //     self.capacity = self.capacity * 2
+      //      let newData: [T] = newArrayFrom(data, 0, length, self.capacity)
+       //     self.data = newData
+      // }
+       // self.data[self.length] = item
+     //   self.length = self.length + 1
+    }
+
+    fn insertAny<O>() -> T {
+
+    }
+
+    fn length() -> int {
+        self.length
+    }
+}
+
+
+
+object Entity<S>(s: String<S>) : String<S>(s) {
+    fn test() -> void {
+       // println("test")
+    }
+    override fn test2() -> void {
+       // println("test2")
+    }
+}
+
+
+object String<S>(data: [int]) {
+    length: int = data.length
+    virtual fn test2() -> void {
+
+    }
+}
+
+fn newObject<S>() -> S {
+    s
+}
+
+
+@Link = [
+    {
+        "target": "java",
+        "source": "java.io.Files.read",
+        "name": "newArrayFrom"
+    },
+    {
+        "target": "c",
+        "source": "libs/std.dll",
+        "name": "newArrayFrom"
+    }
+]
+native fn newArrayFrom<T>(arr: [T], start: int, end: int, capacity: int) -> [T] {
+
+}

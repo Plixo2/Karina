@@ -6,7 +6,7 @@ import karina.lexer.{Region, TokenRecord}
 case class Node(name: String, region: Region, children: List[Node], tokenRecord: TokenRecord, isLiteral: Boolean) {
 
     def get(name: String): Option[Node] = {
-        children.find(_.name == name.toLowerCase) match {
+        children.find(_.name.toLowerCase == name.toLowerCase) match {
             case Some(value) => Some(value)
             case None        => None
         }
@@ -42,10 +42,10 @@ case class Node(name: String, region: Region, children: List[Node], tokenRecord:
     }
 
     def string(): String = {
-        if (name.toLowerCase == "string") {
-            get("string").expect("Expected string on rule 'string'").tokenRecord.literal
+        if (name.toLowerCase == "stringliteral") {
+            get("stringliteral").expect("Expected string on rule 'stringliteral'").tokenRecord.literal
         } else {
-            get("string").expect(s"Token literal called string on ${this.name}").number()
+            get("stringliteral").expect(s"Token literal called 'stringliteral' on ${this.name}").string()
         }
     }
 

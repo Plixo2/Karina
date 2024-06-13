@@ -2,26 +2,30 @@ package karina.highlevel
 
 import karina.files.ObjectPath
 import karina.lexer.Region
+import karina.types.Type
 
 case class HLClass(
-    region: Region,
-    name: String,
-    genericHint: Option[HLGenericDefinition],
-    parameter: List[HLParameter],
-    superClass: Option[HLClassInheritance],
-    fields: List[HLField],
-    functions: List[HLFunction]
+                      region: Region,
+                      name: String,
+                      genericHint: Option[HLGenericDefinition],
+                      parameters: List[HLParameter],
+                      superClass: Option[HLClassInheritance],
+                      fields: List[HLField],
+                      functions: List[HLFunction]
 ) {}
 
-case class HLParameter(region: Region, name: String, tpe: HLType) {}
+case class HLParameter(region: Region, name: String, tpe: Type) {}
 
-case class HLField(region: Region, name: String, tpe: HLType, value: Expression) {}
+case class HLField(region: Region, name: String, tpe: Type, value: Expression) {}
 
-case class HLClassInheritance(region: Region, tpe: HLType, memberInits: List[HLInitMember]) {}
+case class HLClassInheritance(region: Region, tpe: Type, memberInits: List[Expression]) {}
 
 case class HLImport(region: Region, path: ObjectPath) {}
 
 case class HLUnit(region: Region, imports: List[HLImport], classes: List[HLClass], functions: List[HLFunction]) {}
+
+case class HLPackage(name: String, units: List[(String, HLUnit)], subPackages: List[HLPackage]) {
+}
 
 case class HLFunction(
     region: Region,
@@ -29,7 +33,7 @@ case class HLFunction(
     modifier: Modifier,
     genericHint: Option[HLGenericDefinition],
     parameters: List[HLParameter],
-    returnType: HLType,
+    returnType: Type,
     expression: Expression
 ) {}
 

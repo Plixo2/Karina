@@ -1,10 +1,13 @@
 
 fn main(input: int) -> int {
-    let a = 1
-    let test = if true {
-        1
-    } else {
-        0
+    let a = new Test {
+        a: 1,
+        b: 2
     }
-    test
+    0
+}
+
+struct Test {
+    a: int
+    b: int
 }

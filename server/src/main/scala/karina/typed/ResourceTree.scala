@@ -185,10 +185,8 @@ case class DefaultClass(
     className: String,
     path: ObjectPath,
     genericDefinition: List[GenericType],
-    parameters: List[Parameter],
     fields: List[Field],
     functions: List[DefaultFunction],
-    inheritance: Option[Inheritance]
 ) extends ResourceTree {
     override def name(): String = className
     override def locate(path: ObjectPath): Option[Resource] = {
@@ -223,11 +221,8 @@ case class DefaultClass(
 }
 case class Parameter(region: Region, name: String, tpe: Type, variableObject: Option[Variable])
 
-case class Inheritance(region: Region, tpe: Type, initList: List[Expression])
-case class MemberInit(name: String, expression: Expression)
-
 case class Import(region: Region, path: ObjectPath) {}
 
-case class Field(region: Region, name: String, tpe: Type, expression: Expression) {
-    override def toString: String = s"$name: $tpe = ..."
+case class Field(region: Region, name: String, tpe: Type) {
+    override def toString: String = s"$name: $tpe"
 }

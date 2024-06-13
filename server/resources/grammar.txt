@@ -15,8 +15,8 @@ functionModifier ::= "override" | "native" | "virtual"
 parameterList ::= (parameter ("," parameter!)*)?
 parameter ::= id ":"! type!
 
-class ::= annotation* "object" id! genericHintDefinition? ( "(" parameterList! ")"! )? (":" type! "("! expressionList! ")"! )? ( "{" (field | function)* "}"! )?
-field ::= id ":"! type! "="! expression!
+class ::= annotation* "struct" id! genericHintDefinition? ( "{" (field | function)* "}"! )?
+field ::= id ":"! type!
 
 
 type ::= "void" | "int" | "float" | "bool" | "string" | "?" | dotWordChain genericHint? | arrayType | functionType

@@ -15,7 +15,7 @@ object HLParser {
     def parse(node: Node): HLUnit = {
         node.assertType("unit")
         var imports = List[HLImport]()
-        var classes = List[HLClass]()
+        var classes = List[HLStruct]()
         var functions = List[HLFunction]()
         val items = node.getAll("item")
         items.foreach(item => {
@@ -34,33 +34,20 @@ object HLParser {
         HLUnit(node.region, imports, classes, functions)
     }
 
-    private def parseClass(node: Node): HLClass = {
+    private def parseClass(node: Node): HLStruct = {
         node.assertType("class")
         val name = node.id()
         val genHint = node.get("genericHintDefinition").map(parseGenericHintDefinition)
-        val parameters = if (node.has("parameterList"))  {
-            parseParameterList(node("parameterList"))
-        } else {
-            List()
-        }
         val fields = node.map(
           "field",
           field => {
               val name = field.id()
               val type_ = HLTypeParser.parse(field("type"))
-              val expression = HLExpressionParser.parse(field("expression"))
-              HLField(field.region, name, type_, expression)
+              HLField(field.region, name, type_)
           }
         )
         val functions = node.map("function", parseFunction)
-        val superClass = node
-            .get("type")
-            .map(tye => {
-                val superType = HLTypeParser.parse(node("type"))
-                val initMembers = HLExpressionParser.parseExpressionList(node("expressionList"))
-                HLClassInheritance(tye.region, superType, initMembers)
-            })
-        HLClass(node.region, name, genHint, parameters, superClass, fields, functions)
+        HLStruct(node.region, name, genHint, fields, functions)
     }
 
     private def parseFunction(node: Node): HLFunction = {
@@ -372,7 +359,8 @@ object HLExpressionParser {
             throw new LanguageException(node.region, "Unknown object")
         }
     }
-    def parseExpressionList(node: Node): List[Expression] = {
+    
+    private def parseExpressionList(node: Node): List[Expression] = {
         node.assertType("expressionList")
         node.map("expression", parse)
     }

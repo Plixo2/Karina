@@ -1,15 +1,9 @@
-
-fn test.main r3 (i):i {
+obj test.Test s2 { a, b }
+fn test.main r2 (i):i {
 load_int 1 1
-def_var 1 1 i
-load_bool 2 true
-jump_if 2 {
-load_int 3 1
-}
-{
-load_int 3 0
-}
-
-def_var 2 -1 i
+load_int 2 2
+new_object 1 test.Test [1, 2]
+def_var 1 1 p
+load_int 2 0
 return_value 2
 }

@@ -139,25 +139,11 @@ case class ObjectType(region: Region, path: ObjectPath, binds: Map[GenericType, 
     def getTypeReplaced(tpe: Type): Type = {
         getReplacedType(tpe, binds)
     }
-
-    def getParent(root: DefaultPackage): Option[ObjectType] = {
-        val classes = root.locateClass(path).expectWithRegion(region, "Getting path")
-        classes.inheritance.map(ref => {
-            val tpe = ref.tpe.asInstanceOf[ObjectType]
-            ObjectType(ref.region, tpe.path, tpe.binds.map { case (k, v) => (k, getTypeReplaced(v)) })
-        })
-    }
+    
 
     def getField(root: DefaultPackage, name: String): Option[Type] = {
         val classes = root.locateClass(path).expectWithRegion(region, "Getting path")
-        classes.parameters
-            .find(ref => ref.name == name)
-            .map(ref => getTypeReplaced(ref.tpe))
-            .orElse(
-              classes.fields.find(_.name == name).map(ref => getTypeReplaced(ref.tpe))
-            ).orElse({
-                getParent(root).flatMap(ref => ref.getField(root, name))
-            })
+        classes.fields.find(_.name == name).map(ref => getTypeReplaced(ref.tpe))
     }
 
     def getFunction(root: DefaultPackage, name: String): Option[(FunctionType, ObjectPath)] = {
@@ -171,9 +157,6 @@ case class ObjectType(region: Region, path: ObjectPath, binds: Map[GenericType, 
                 val boundInputs = inputTypes.map(ref => getReplacedType(ref, binds))
                 val returnType = getReplacedType(getTypeReplaced(ref.returnType), binds)
                 (FunctionType(ref.region, boundInputs, returnType), ref.path)
-            })
-            .orElse({
-                getParent(root).flatMap(ref => ref.getFunction(root, name))
             })
     }
 

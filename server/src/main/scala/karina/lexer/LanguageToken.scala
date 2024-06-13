@@ -24,7 +24,7 @@ object LanguageToken {
           LiteralWord("virtual"),
           LiteralWord("break"),
           LiteralWord("return"),
-          LiteralWord("object"),
+          LiteralWord("struct"),
           LiteralWord("let"),
           LiteralWord("if"),
           LiteralWord("else"),

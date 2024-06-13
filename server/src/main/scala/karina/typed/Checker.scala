@@ -1,7 +1,7 @@
 package karina.typed
 
 import karina.LanguageException
-import karina.typed.TypeChecker.TypeCheckContext
+import karina.typed.InferTransformer.TypeCheckContext
 import karina.types.*
 
 import scala.util.boundary
@@ -140,16 +140,7 @@ object Checker {
                                 }
                             })
                         } else {
-                            val objectType = b.asInstanceOf[ObjectType]
-                            objectType.getParent(context.root) match {
-                                case Some(value) => {
-                                    isAssignable(context, a, objectType.getParent(context.root).get, mutate)
-                                }
-                                case None => {
-
-                                    false
-                                }
-                            }
+                            false
                         }
                     }
                     case _ => false

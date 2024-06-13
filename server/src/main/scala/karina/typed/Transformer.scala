@@ -6,14 +6,81 @@ import karina.highlevel.TypedArithmeticOP.*
 import karina.lexer.Region
 import karina.typed.FlowChecker.FlowType.{FlowReturn, FlowValue}
 import karina.typed.FlowChecker.{FlowType, getFlowType}
-import karina.typed.TypeChecker.TypeCheckContext
+import karina.typed.InferTransformer.TypeCheckContext
 import karina.types.*
 import karina.{LanguageException, LanguageTypeException}
 
 import scala.annotation.tailrec
 import scala.collection.parallel.CollectionConverters.*
 
-object TypeResolver {
+
+object TypedTransformer {
+    def toTypedRoot(hlPackage: HLPackage): DefaultPackage = {
+        val subPath = ObjectPath(List(), allowEmpty = true)
+        DefaultPackage(
+            hlPackage.name,
+            subPath,
+            hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
+            hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
+        )
+    }
+
+    private def toTypedPackage(path: ObjectPath, hlPackage: HLPackage): DefaultPackage = {
+        val subPath = path.add(hlPackage.name)
+        DefaultPackage(
+            hlPackage.name,
+            subPath,
+            hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
+            hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
+        )
+    }
+
+    private def toTypedUnit(path: ObjectPath, name: String, hlUnit: HLUnit): DefaultUnit = {
+        val subPath = path.add(name)
+        DefaultUnit(
+            hlUnit.region,
+            name,
+            subPath,
+            hlUnit.imports.par.map(ref => Import(ref.region, ref.path)).toList,
+            hlUnit.classes.par.map(ref => toTypedClass(subPath, ref)).toList,
+            hlUnit.functions.par.map(ref => toTypedFunction(subPath, true, ref)).toList
+        )
+    }
+
+    private def toTypedClass(path: ObjectPath, hlClass: HLStruct): DefaultClass = {
+        val subPath = path.add(hlClass.name)
+        val definedGenerics = hlClass.genericHint
+            .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Class(subPath))))
+            .getOrElse(List())
+        val fields = hlClass.fields.map(ref => {
+            Field(ref.region, ref.name, ref.tpe)
+        })
+        val functions = hlClass.functions.map(ref => toTypedFunction(subPath, false, ref))
+        DefaultClass(hlClass.region, hlClass.name, subPath, definedGenerics, fields, functions)
+    }
+
+    private def toTypedFunction(path: ObjectPath, isStatic: Boolean, hlFunction: HLFunction): DefaultFunction = {
+        val subPath = path.add(hlFunction.name)
+        val returnType = hlFunction.returnType
+        val parameters = hlFunction.parameters.map(ref => Parameter(ref.region, ref.name, ref.tpe, None))
+        val definedGenerics = hlFunction.genericHint
+            .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Function(subPath))))
+            .getOrElse(List())
+        DefaultFunction(
+            hlFunction.region,
+            isStatic,
+            hlFunction.name,
+            subPath,
+            hlFunction.modifier,
+            returnType,
+            parameters,
+            definedGenerics,
+            hlFunction.expression
+        )
+    }
+}
+
+object TypeResolveTransformer {
     def resolve(root: DefaultPackage): DefaultPackage = {
         DefaultPackage(
           root.packageName,
@@ -75,28 +142,16 @@ object TypeResolver {
           clazz.className,
           clazz.path,
           clazz.genericDefinition,
-          clazz.parameters.map(p => Parameter(p.region, p.name, resolveType(p.tpe, typeLookupGeneric), None)),
           clazz.fields.par
               .map(ref => {
                   Field(
                     ref.region,
                     ref.name,
                     resolveType(ref.tpe, typeLookupGeneric),
-                    ref.expression
                   )
               })
               .toList,
-          clazz.functions.map(ref => resolveFunction(root, typeLookupGeneric, ref)),
-          clazz.inheritance.map(ref => {
-              Inheritance(
-                ref.region,
-                resolveType(ref.tpe, typeLookupGeneric) match {
-                    case r: ObjectType => r
-                    case _             => throw new LanguageException(ref.region, "Cannot inherit from non object type")
-                },
-                ref.initList
-              )
-          })
+          clazz.functions.map(ref => resolveFunction(root, typeLookupGeneric, ref))
         )
     }
 
@@ -299,7 +354,7 @@ object TypeResolver {
 
 }
 
-object VariableResolver {
+object VariableResolveTransformer {
 
     def resolve(root: DefaultPackage): DefaultPackage = {
         DefaultPackage(
@@ -375,12 +430,10 @@ object VariableResolver {
           clazz.className,
           clazz.path,
           clazz.genericDefinition,
-          clazz.parameters,
           clazz.fields.map(ref =>
-              Field(ref.region, ref.name, ref.tpe, resolveExpression(ref.expression, emptyContext)._1)
+              Field(ref.region, ref.name, ref.tpe)
           ),
           clazz.functions.map(ref => resolveFunction(root, ref, importedFunctions)),
-          clazz.inheritance
         )
     }
 
@@ -681,7 +734,7 @@ object VariableResolver {
     }
 }
 
-object TypeChecker {
+object InferTransformer {
 
     def resolve(root: DefaultPackage): DefaultPackage = {
         DefaultPackage(
@@ -724,24 +777,14 @@ object TypeChecker {
           clazz.className,
           clazz.path,
           clazz.genericDefinition,
-          clazz.parameters,
           clazz.fields.map(ref =>
               Field(
                 ref.region,
                 ref.name,
-                ref.tpe, {
-                    val context = TypeCheckContext(root, None, ref.tpe, Map.empty)
-                    val expr = resolveExpression(Some(ref.tpe), context, ref.expression)
-                    val exprType = ExpressionType.getType(expr)
-                    if (!Checker.isAssignable(context, ref.tpe, exprType, true)) {
-                        throw new LanguageTypeException(ref.region, ref.tpe, exprType)
-                    }
-                    expr
-                }
+                ref.tpe
               )
           ),
           clazz.functions.map(ref => resolveFunction(root, ref, Some(selfType))),
-          clazz.inheritance
         )
     }
 
@@ -944,11 +987,11 @@ object TypeChecker {
                             }
                         })
                         val boundObject = ObjectType(region, path, bindings)
-                        if (clazz.parameters.length != initList.length) {
+                        if (clazz.fields.length != initList.length) {
                             throw new LanguageException(region, "Parameter count mismatch")
                         }
                         var sortedParameterExpressions = List[Expression]()
-                        var unInitFields = clazz.parameters
+                        var unInitFields = clazz.fields
                         initList.foreach(ref => {
                             unInitFields.find(param => ref.name == param.name) match {
                                 case Some(value) => {
@@ -1738,6 +1781,7 @@ object FlowChecker {
         case FlowValue(tpe: Type)
     }
 }
+
 
 extension [T](option: Option[T]) {
     def expectWithRegion(region: Region, msg: String): T = option.getOrElse {

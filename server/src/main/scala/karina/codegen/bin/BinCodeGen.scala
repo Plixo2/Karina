@@ -124,7 +124,7 @@ object BinCodeGen {
             val addedFunctions = clazz.functions.foldLeft(container) { (container, function) =>
                 container.addFunction(generateFunction(root, function, true))
             }
-            addedFunctions.addObject(ObjectRepresentation.loadFromObj(root, clazz))
+            addedFunctions.addObject(ObjectRepresentation.loadFromObj(clazz))
 
         }
 

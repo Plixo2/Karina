@@ -1,9 +1,62 @@
-obj test.Test s2 { a, b }
-fn test.main r2 (i):i {
-load_int 1 1
-load_int 2 2
-new_object 1 test.Test [1, 2]
-def_var 1 1 p
-load_int 2 0
-return_value 2
+
+fn fn r1 ():i {
+    call_static 0 test.main []
+    exit 0
+}
+obj test.SomeObject [i] { time, get_half_time }
+fn test.main r1 ():i {
+    call_static 0 test.call_me []
+    load_int 0 0
+    return_value 0
+}
+
+
+fn test.call_me r5 ():i {
+    load_int 0 11
+    load_int 1 33
+    load_int 2 99
+    new_array 0 [0, 1, 2] i
+    def_var 0 0 p
+    load_int 1 0
+    array_index 1 0 1
+    call_static 2 test.println [1]
+    load_int 1 1
+    array_index 1 0 1
+    call_static 2 test.println [1]
+    load_int 1 2
+    array_index 1 0 1
+    call_static 2 test.println [1]
+    call_static 1 test.get_time []
+    new_object 2 test.SomeObject [1]
+    new_array 1 [2] p
+    def_var 1 1 p
+    call_static 2 test.get_time []
+    call_static 3 test.println [2]
+    call_static 2 test.get_time []
+    new_object 3 test.SomeObject [2]
+    def_var 2 3 p
+    call_dynamic_direct 3 test.SomeObject.get_half_time [2]
+    call_static 4 test.println [3]
+    load_int 3 0
+    return_value 3
+}
+
+
+fn test.get_time r1 ():i {
+    call_native 0 test.get_time []
+    return_value 0
+}
+
+
+fn test.println r2 (i):v {
+    call_native 1 test.println [0]
+    return_value 1
+}
+
+
+fn test.SomeObject.get_half_time r3 (p):i {
+    get_field 1 0 0
+    load_int 2 2
+    binary IntDivide 1 1 2
+    return_value 1
 }

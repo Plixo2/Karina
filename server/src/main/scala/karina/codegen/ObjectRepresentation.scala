@@ -19,12 +19,13 @@ object ObjectRepresentation {
         defaultClass.functions.foreach { ref =>
             startSlots = startSlots :+ ref.name()
         }
+        val str = defaultClass.fields.map(ref => ref.tpe.getLowLevelType()).mkString(", ")
 
-        MemoryObject(defaultClass.path.mkString("."), startSlots)
+        MemoryObject(defaultClass.path.mkString("."), startSlots, str)
     }
     
 
-    case class MemoryObject(name: String,slots: List[String]) {
+    case class MemoryObject(name: String,slots: List[String], gcMask: String) {
         def size(): Int = slots.size
 
         def getSlot(name: String): Int = {

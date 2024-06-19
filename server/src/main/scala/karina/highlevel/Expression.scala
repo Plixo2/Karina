@@ -71,13 +71,11 @@ case class HLInitMember(region: Region, name: String, value: Expression)
 case class HLBranch(
     region: Region,
     condition: Expression,
-    caseCheck: Option[HLBranchCaseCheck],
     ifTrue: Expression,
     ifFalse: Option[Expression]
 ) extends Expression(region)
     with StageNode
 
-case class HLBranchCaseCheck(region: Region, tpe: Type, checkType: HLCaseCheck)
 
 enum HLCaseCheck {
     case Name(name: String)
@@ -88,13 +86,11 @@ enum HLCaseCheck {
 case class Branch(
     region: Region,
     condition: Expression,
-    caseCheck: Option[BranchCaseCheck],
     ifTrue: Expression,
     ifFalse: Option[Expression]
 ) extends Expression(region)
     with StageVariable
 
-case class BranchCaseCheck(region: Region, tpe: ObjectType, checkType: CaseCheck)
 
 enum CaseCheck {
     case Name(variable: Variable)
@@ -188,7 +184,6 @@ case class TypedField(region: Region, objType: ObjectType, obj: Expression, fiel
 case class TypedBranch(
     region: Region,
     condition: Expression,
-    caseCheck: Option[BranchCaseCheck],
     ifTrue: Expression,
     ifFalse: Option[(Type, Expression)]
 ) extends Expression(region)
@@ -202,9 +197,13 @@ case class CallStaticFunction(region: Region, path: ObjectPath, returnType: Type
     extends Expression(region)
     with StageTyped
 
-case class CallDynamicFunction(region: Region, left: Expression, returnType: Type, expression: List[Expression])
+case class CallDynamicFunctionIndirect(region: Region, left: Expression, returnType: Type, expression: List[Expression])
     extends Expression(region)
     with StageTyped
+
+case class CallDynamicFunctionDirect(region: Region, obj: Expression, path: ObjectPath, returnType: Type, expression: List[Expression])
+    extends Expression(region)
+        with StageTyped
 
 case class TypedStaticFunction(region: Region, path: ObjectPath, inputTypes: List[Type], returnType: Type)
     extends Expression(region)

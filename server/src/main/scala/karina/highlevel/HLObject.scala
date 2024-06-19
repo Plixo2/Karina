@@ -12,6 +12,15 @@ case class HLStruct(
                       functions: List[HLFunction]
 ) {}
 
+case class HLEnum(
+                   region: Region,
+                   name: String,
+                   genericHint: Option[HLGenericDefinition],
+                   cases: List[HLEnumCase]
+) {}
+
+case class HLEnumCase(region: Region, name: String, types: List[Type]) {}
+
 case class HLParameter(region: Region, name: String, tpe: Type) {}
 
 case class HLField(region: Region, name: String, tpe: Type) {}

@@ -34,7 +34,7 @@ object FrontEnd {
         val variables = VariableResolveTransformer.resolve(types)
         val typed = InferTransformer.resolve(variables)
         val code = BinCodeGen.generate(typed)
-        BinPrinterPlain.write(code, "resources/test.krnac")
+        BinPrinterPlain.write("test.main", code, "resources/test.krnac")
     }
 
     

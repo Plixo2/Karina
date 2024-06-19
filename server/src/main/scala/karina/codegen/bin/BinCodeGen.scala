@@ -4,8 +4,9 @@ import karina.LanguageException
 import karina.codegen.ObjectRepresentation
 import karina.codegen.ObjectRepresentation.MemoryObject
 import karina.codegen.bin.BinCodeGen.Instruction
-import karina.codegen.bin.BinCodeGen.Instruction.{PutArray, UnInstruction}
+import karina.codegen.bin.BinCodeGen.Instruction.{Jump, JumpWithValue, PutArray, UnInstruction}
 import karina.highlevel.*
+import karina.typed.FlowChecker.FlowType
 import karina.typed.{DefaultFunction, DefaultPackage, DefaultUnit, FlowChecker}
 import karina.types.VoidType
 
@@ -37,12 +38,13 @@ object BinCodeGen {
 
         def addPermanent(register: Register): Unit = {
             permanentRegisters += register
+            maxUsed = register.max(maxUsed)
         }
         def removePermanent(register: Register): Unit = {
             permanentRegisters -= register
         }
 
-        def maxUsedRegister(): Int = maxUsed
+        def maxUsedRegister(): Int = maxUsed + 1
     }
 
     case class CodeContainer(functions: List[CodeFunction], objects: List[MemoryObject]) {
@@ -65,6 +67,9 @@ object BinCodeGen {
         def addInstruction(instruction: Instruction): CodeFunction = {
             CodeFunction(name, registers, returnType, parameters, instructions :+ instruction, variables)
         }
+        def addLabel(name: String, args: List[Register] = List()): CodeFunction = {
+            addInstruction(Instruction.Label(name, args))
+        }
         def addVariable(variable: Variable, register: Register): CodeFunction = {
             CodeFunction(name, registers, returnType, parameters, instructions, variables + (variable -> register))
         }
@@ -80,6 +85,7 @@ object BinCodeGen {
 
     enum Instruction {
         case Debug(reg: Register)
+        case Label(name: String, args: List[Register])
         case LoadInt(reg: Register, value: Long)
         case Assign(dest: Register, src: Register)
         case DefVar(dest: Register, src: Register, tpe: String)
@@ -96,15 +102,17 @@ object BinCodeGen {
         case GetStaticFunctionPointer(reg: Register, path: String)
         case ArrayIndex(reg: Register, obj: Register, index: Register)
         case Jump(target: String)
-        case JumpIfTrue(ifTrue: List[Instruction], ifFalse: List[Instruction], obj: Register)
-        case JumpIfTrueWithValue(ifTrue: List[Instruction], ifFalse: List[Instruction], obj: Register)
+        case JumpWithValue(target: String, obj: Register)
+        case JumpIfTrue(ifTrue: String, ifFalse: String, obj: Register)
+        case JumpIfTrueWithValue(ifTrue: String, ifFalse: String, obj: Register)
         case JumpIfFalse(target: String, obj: Register)
         case IntToFloat(reg: Register, obj: Register)
-        case NewArray(reg: Register, args: List[Register])
+        case NewArray(reg: Register, args: List[Register], tpe: String)
         case PutArray(obj: Register, index: Register, value: Register)
         case NewObject(reg: Register, tpe: String, args: List[Register])
         case CallStatic(reg: Register, function: String, args: List[Register])
         case CallDynamic(reg: Register, function: Register, args: List[Register])
+        case CallDynamicDirect(reg: Register, function: String, args: List[Register])
         case CallNative(reg: Register, name: String, args: List[Register])
 
     }
@@ -180,17 +188,16 @@ object BinCodeGen {
         }
         expression.asInstanceOf[StageTyped] match {
             case While(region, condition, body) => {
-                ???
-//                val label = s"while_${container.instructions.length}"
-//                val labelEnd = s"while_end_${container.instructions.length}"
-//                val whileStart = container.addInstruction(Instruction.Label(label))
-//                val (fn, regCond) = generateExpression(root, condition, whileStart, registerPage)
-//                registerPage.free(regCond)
-//                val jumps = fn.addInstruction(Instruction.JumpIfFalse(labelEnd, regCond))
-//                val (fn2, regBody) = generateExpression(root, body, jumps, registerPage)
-//                registerPage.free(regBody)
-//                val instruction2 = Instruction.Jump(label)
-//                (fn2.addInstruction(instruction2).addInstruction(Instruction.Label(labelEnd)), -1)
+                val label = s"while_${container.instructions.length}"
+                val labelEnd = s"while_end_${container.instructions.length}"
+                val whileStart = container.addInstruction(Instruction.Label(label, List()))
+                val (fn, regCond) = generateExpression(root, condition, whileStart, registerPage)
+                registerPage.free(regCond)
+                val jumps = fn.addInstruction(Instruction.JumpIfFalse(labelEnd, regCond))
+                val (fn2, regBody) = generateExpression(root, body, jumps, registerPage)
+                registerPage.free(regBody)
+                val instruction2 = Instruction.Jump(label)
+                (fn2.addInstruction(instruction2).addInstruction(Instruction.Label(labelEnd, List())), -1)
             }
             case FloatLiteral(region, value) => {
                 val reg = registerPage.allocate()
@@ -250,7 +257,7 @@ object BinCodeGen {
                 }
                 registers.foreach(registerPage.free)
                 val reg = registerPage.allocate()
-                val instruction = Instruction.NewArray(reg, registers)
+                val instruction = Instruction.NewArray(reg, registers, tpe.getLowLevelType())
                 (codeFunction.addInstruction(instruction), reg)
             }
             case TypedNew(region, tpe, elements) => {
@@ -260,8 +267,8 @@ object BinCodeGen {
                     registers = registers :+ reg
                     fn
                 }
-                registers.foreach(registerPage.free)
                 val reg = registerPage.allocate()
+                registers.foreach(registerPage.free)
                 val instruction = Instruction.NewObject(reg, tpe.path.mkString("."), registers)
                 (codeFunction.addInstruction(instruction), reg)
             }
@@ -278,56 +285,132 @@ object BinCodeGen {
                 val instruction = Instruction.GetField(reg, regObj, offset)
                 (fn.addInstruction(instruction), reg)
             }
-            case TypedBranch(region, condition, caseCheck, ifTrue, ifFalse) => {
+            case TypedBranch(region, condition, ifTrue, ifFalse) => {
+                // TODO fix this fucking mess
+                val trueCaseLabel = s"true_case${container.instructions.length}"
+                val falseCaseLabel = s"false_case${container.instructions.length}"
+                val endLabel = s"end_case${container.instructions.length}"
                 val (fn, regCond) = generateExpression(root, condition, container, registerPage)
-
-                val cleanContainer = container.removeInstructions()
-
-                val (compiledThen, reg) = generateExpression(root, ifTrue, cleanContainer, registerPage)
-                registerPage.free(reg)
-
                 val doesYieldValue = ifFalse.exists(ref => !ref._1.isInstanceOf[VoidType])
-                
-                val elseInstructions = if (ifFalse.isDefined) {
-                    val (compiledElse, reg2) = generateExpression(root, ifFalse.get._2, cleanContainer, registerPage)
-                    registerPage.free(reg2)
-                    compiledElse.instructions
+                if (!doesYieldValue) {
+                    val flowType = FlowChecker.getFlowType(ifTrue)
+                    val jumpFn =
+                        fn.addInstruction(Instruction.JumpIfTrue(trueCaseLabel, falseCaseLabel, regCond))
+                    registerPage.free(regCond)
+                    val trueLabelFn = jumpFn.addLabel(trueCaseLabel)
+                    val (compiledThen, reg) = generateExpression(root, ifTrue, trueLabelFn, registerPage)
+                    registerPage.free(reg)
+                    flowType match {
+                        case FlowType.FlowReturn(tpe) => {
+                            val falseStart = compiledThen.addLabel(falseCaseLabel)
+                            if (ifFalse.isDefined) {
+                                val (compiledElse, reg) =
+                                    generateExpression(root, ifFalse.get._2, falseStart, registerPage)
+                                registerPage.free(reg)
+                                val flowType = FlowChecker.getFlowType(ifFalse.get._2)
+                                flowType match {
+                                    case FlowType.FlowReturn(tpe) => {
+                                        (compiledElse, -1)
+                                    }
+                                    case FlowType.FlowValue(tpe) => {
+                                        (compiledElse.addInstruction(Instruction.Jump(endLabel)).addLabel(endLabel), -1)
+                                    }
+                                }
+                            } else {
+                                (falseStart, -1)
+                            }
+                        }
+                        case FlowType.FlowValue(tpe) => {
+                            val falseStart = compiledThen.addInstruction(Jump(endLabel)).addLabel(falseCaseLabel)
+                            if (ifFalse.isDefined) {
+                                val (compiledElse, reg) =
+                                    generateExpression(root, ifFalse.get._2, falseStart, registerPage)
+                                registerPage.free(reg)
+                                val flowType = FlowChecker.getFlowType(ifFalse.get._2)
+                                flowType match {
+                                    case FlowType.FlowReturn(tpe) => {
+                                        (compiledElse.addLabel(endLabel), -1)
+                                    }
+                                    case FlowType.FlowValue(tpe) => {
+                                        (compiledElse.addInstruction(Instruction.Jump(endLabel)).addLabel(endLabel), -1)
+                                    }
+                                }
+                            } else {
+                                (falseStart.addLabel(endLabel), -1)
+                            }
+                        }
+                    }
                 } else {
-                    List()
+                    assert(ifFalse.isDefined)
+                    val isFalse = ifFalse.get._2
+                    val flowTypeTrue = FlowChecker.getFlowType(ifTrue)
+                    val flowTypeFalse = FlowChecker.getFlowType(isFalse)
+                    flowTypeTrue match {
+                        case FlowType.FlowReturn(tpe) => {
+                            flowTypeFalse match {
+                                case FlowType.FlowReturn(tpe) => {
+                                    throw new LanguageException(
+                                      region,
+                                      "Cannot have return in both branches for yield values"
+                                    )
+                                }
+                                case FlowType.FlowValue(tpe) => {
+                                    val fnJump = fn
+                                        .addInstruction(
+                                          Instruction.JumpIfTrueWithValue(trueCaseLabel, falseCaseLabel, regCond)
+                                        )
+                                        .addLabel(trueCaseLabel)
+                                    val (compiledThen, reg) = generateExpression(root, ifTrue, fnJump, registerPage)
+                                    registerPage.free(reg)
+                                    val falseStart = compiledThen.addLabel(falseCaseLabel)
+                                    val (compiledElse, regA) =
+                                        generateExpression(root, isFalse, falseStart, registerPage)
+                                    val target = registerPage.allocate()
+                                    (
+                                      compiledElse.addInstruction(JumpWithValue(endLabel, regA)).addLabel(endLabel, List(target)),
+                                      target
+                                    )
+                                }
+                            }
+                        }
+                        case FlowType.FlowValue(tpe) => {
+                            flowTypeFalse match {
+                                case FlowType.FlowReturn(tpe) => {
+                                    val fnJump = fn
+                                        .addInstruction(
+                                          Instruction.JumpIfTrueWithValue(trueCaseLabel, falseCaseLabel, regCond)
+                                        )
+                                        .addLabel(trueCaseLabel)
+                                    val (compiledThen, reg) = generateExpression(root, ifTrue, fnJump, registerPage)
+                                    val falseStart = compiledThen.addInstruction(JumpWithValue(endLabel, reg)).addLabel(falseCaseLabel)
+                                    val (compiledElse, regA) = generateExpression(root, isFalse, falseStart, registerPage)
+                                    registerPage.free(regA)
+                                    val target = registerPage.allocate()
+                                    (
+                                      compiledElse.addLabel(endLabel, List(target)),
+                                      target
+                                    )
+                                }
+                                case FlowType.FlowValue(tpe) => {
+                                    val fnJump = fn
+                                        .addInstruction(
+                                            Instruction.JumpIfTrueWithValue(trueCaseLabel, falseCaseLabel, regCond)
+                                        )
+                                        .addLabel(trueCaseLabel)
+                                    val (compiledThen, reg) = generateExpression(root, ifTrue, fnJump, registerPage)
+                                    val falseStart = compiledThen.addInstruction(JumpWithValue(endLabel, reg)).addLabel(falseCaseLabel)
+                                    val (compiledElse, regA) = generateExpression(root, isFalse, falseStart, registerPage)
+                                    val target = registerPage.allocate()
+                                    (
+                                        compiledElse.addInstruction(JumpWithValue(endLabel, regA)).addLabel(endLabel, List(target)),
+                                        target
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                 }
-
-                val fn2 = fn
-                    .addInstruction(Instruction.JumpIfTrue(compiledThen.instructions, elseInstructions, regCond))
-                registerPage.free(regCond)
-                (fn2, -1)
-
-//                ifFalse match {
-//                    case Some((tpe, expr)) => {
-//                        FlowChecker.getFlowType(expr)
-//                        registerPage.free(reg)
-//                        val target = registerPage.allocate()
-//
-//                        val fn4 = fn3
-////                            .addInstruction(Instruction.Assign(target, reg))
-//                            .addInstruction(Instruction.Jump(endLabel))
-//                            .addInstruction(Instruction.Label(elseLabel))
-//
-//                        val (fn5, reg2) = generateExpression(root, expr, fn4, registerPage)
-//                        registerPage.free(reg2)
-//
-//                        (
-//                          fn5
-////                              .addInstruction(Instruction.Assign(target, reg2))
-//                              .addInstruction(Instruction.Label(endLabel)),
-//                          target
-//                        )
-//                    }
-//                    case None => {
-//                        registerPage.free(reg)
-//                        (fn3.addInstruction(Instruction.Label(endLabel)), -1)
-//                    }
-//                }
-
             }
             case TypedBlock(region, expressions, returnType) => {
                 expressions.foldLeft((container, -1)) { (container, expression) =>
@@ -343,12 +426,25 @@ object BinCodeGen {
                     registers = registers :+ reg
                     fn
                 }
-                registers.foreach(registerPage.free)
                 val reg = registerPage.allocate()
                 val instruction = Instruction.CallStatic(reg, path.mkString("."), registers)
+                registers.foreach(registerPage.free)
                 (codeFunction.addInstruction(instruction), reg)
             }
-            case CallDynamicFunction(region, left, returnType, expression) => {
+            case CallDynamicFunctionDirect(region, obj, path, returnType, expression) => {
+                val (fn, regLeft) = generateExpression(root, obj, container, registerPage)
+                var registers = List[Register](regLeft)
+                val codeFunction = expression.foldLeft(fn) { (container, expr) =>
+                    val (fn, reg) = generateExpression(root, expr, container, registerPage)
+                    registers = registers :+ reg
+                    fn
+                }
+                registers.foreach(registerPage.free)
+                val reg = registerPage.allocate()
+                val instruction = Instruction.CallDynamicDirect(reg, path.mkString("."), registers)
+                (codeFunction.addInstruction(instruction), reg)
+            }
+            case CallDynamicFunctionIndirect(region, left, returnType, expression) => {
                 val (fn, regLeft) = generateExpression(root, left, container, registerPage)
                 var registers = List[Register]()
                 val codeFunction = expression.foldLeft(fn) { (container, expr) =>

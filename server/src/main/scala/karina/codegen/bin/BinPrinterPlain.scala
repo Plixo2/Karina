@@ -1,5 +1,6 @@
 package karina.codegen.bin
 
+import karina.codegen.bin.BinCodeGen.Instruction.{JumpIfFalse, Label}
 import karina.codegen.bin.BinCodeGen.{CodeContainer, CodeFunction, Instruction}
 
 import java.nio.charset.StandardCharsets
@@ -7,21 +8,29 @@ import java.nio.file.{Files, Paths}
 
 object BinPrinterPlain {
 
-    def write(container: CodeContainer, path: String): Unit = {
+    def write(main: String, container: CodeContainer, path: String): Unit = {
         val objs = container.objects
             .map(ref => {
-                s"obj ${ref.name} s${ref.slots.size} { " + ref.slots.mkString(", ") + " }"
+                s"obj ${ref.name} [${ref.gcMask}] { " + ref.slots.mkString(", ") + " }"
             })
             .mkString("\n") + "\n"
 
         val content = container.functions
             .map { function =>
-                functionToString(function).mkString("", "\n", "\n}")
+                functionToString(function).mkString("", "\n    ", "\n}")
             }
             .mkString("\n\n\n")
 
+        val start =
+            s"""
+              |fn fn r1 ():i {
+              |    call_static 0 ${main} []
+              |    exit 0
+              |}
+              |""".stripMargin
+
         val filePath = Paths.get(path)
-        Files.write(filePath, (objs + content).getBytes(StandardCharsets.UTF_8))
+        Files.write(filePath, (start + objs + content).getBytes(StandardCharsets.UTF_8))
 
     }
 
@@ -62,6 +71,7 @@ object BinPrinterPlain {
                     case Instruction.GetField(reg, obj, offset) => {
                         seq :+ s"get_field $reg $obj $offset"
                     }
+
                     case Instruction.GetDynamicFunctionPointer(reg, obj, offset) => {
                         seq :+ s"get_dynamic_function_pointer $reg $obj $offset"
                     }
@@ -78,24 +88,19 @@ object BinPrinterPlain {
                         seq :+ s"jump_if_not $target $obj"
                     }
                     case Instruction.JumpIfTrue(thenLabel, falseTarget, obj) => {
-                        seq :+ s"jump_if $obj {\n${
-                            printInstructions(List(), thenLabel).mkString("", "\n", "\n}")
-                        }\n{\n${
-                            printInstructions(List(), falseTarget).mkString("", "\n", "\n}")
-                        }\n"
+                        seq :+ s"jump_if $obj $thenLabel $falseTarget"
                     }
                     case Instruction.JumpIfTrueWithValue(thenLabel, falseTarget, obj) => {
-                        seq :+ s"jump_if $obj {\n${
-                            printInstructions(List(), thenLabel).mkString("", "\n", "\n}")
-                        }\n{\n${
-                            printInstructions(List(), falseTarget).mkString("", "\n", "\n}")
-                        }\n"
+                        seq :+ s"jump_if_v $obj $thenLabel $falseTarget"
+                    }
+                    case Instruction.JumpWithValue(target, obj) => {
+                        seq :+ s"jump_v $target $obj"
                     }
                     case Instruction.IntToFloat(reg, obj) => {
                         seq :+ s"int_to_float $reg $obj"
                     }
-                    case Instruction.NewArray(reg, args) => {
-                        seq :+ s"new_array $reg [${args.mkString(", ")}]"
+                    case Instruction.NewArray(reg, args, tpe) => {
+                        seq :+ s"new_array $reg [${args.mkString(", ")}] $tpe"
                     }
                     case Instruction.PutArray(reg, index, obj) => {
                         seq :+ s"put_array $reg $index $obj"
@@ -105,6 +110,9 @@ object BinPrinterPlain {
                     }
                     case Instruction.CallDynamic(reg, function, args) => {
                         seq :+ s"call_dynamic $reg $function [${args.mkString(", ")}]"
+                    }
+                    case Instruction.CallDynamicDirect(reg, path, args) => {
+                        seq :+ s"call_dynamic_direct $reg $path [${args.mkString(", ")}]"
                     }
                     case Instruction.CallNative(reg, name, args) => {
                         seq :+ s"call_native $reg $name [${args.mkString(", ")}]"
@@ -120,6 +128,9 @@ object BinPrinterPlain {
                     }
                     case Instruction.DefVar(reg, value, tpe) => {
                         seq :+ s"def_var $reg $value $tpe"
+                    }
+                    case Label(name, lst) => {
+                        seq :+ s"#$name [${lst.mkString(", ")}]"
                     }
 
                 }

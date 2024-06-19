@@ -25,6 +25,7 @@ object LanguageToken {
           LiteralWord("break"),
           LiteralWord("return"),
           LiteralWord("struct"),
+          LiteralWord("enum"),
           LiteralWord("let"),
           LiteralWord("if"),
           LiteralWord("else"),

@@ -285,13 +285,10 @@ object TypeResolveTransformer {
                   })
                 )
             }
-            case HLBranch(region, condition, caseCheck, ifTrue, ifFalse) => {
+            case HLBranch(region, condition, ifTrue, ifFalse) => {
                 HLBranch(
                   region,
                   resolveExpression(condition, lookup),
-                  caseCheck.map(ref => {
-                      HLBranchCaseCheck(ref.region, resolveType(ref.tpe, lookup), ref.checkType)
-                  }),
                   resolveExpression(ifTrue, lookup),
                   ifFalse.map(resolveExpression(_, lookup))
                 )
@@ -550,46 +547,12 @@ object VariableResolveTransformer {
                 )
                 (hLNew, context)
             }
-            case HLBranch(region, condition, caseCheck, ifTrue, ifFalse) => {
+            case HLBranch(region, condition, ifTrue, ifFalse) => {
                 val (supCondition, _) = resolveExpression(condition, context)
                 val supIfFalse = ifFalse.map(ref => resolveExpression(ref, context)._1)
                 var subContext = context
-                val mappedCheck = caseCheck.map(ref => {
-                    val check = ref.checkType match {
-                        case HLCaseCheck.Name(name) => {
-                            if (subContext.doesVariableExist(name)) {
-                                throw new LanguageException(region, s"Variable ${name} already exists")
-                            }
-                            val variableVariable = Variable(region, name, VariableLocation.CaseCheck, false)
-                            subContext = subContext.addVariable(variableVariable)
-                            CaseCheck.Name(variableVariable)
-                        }
-                        case HLCaseCheck.Destructor(variables) => {
-                            val variable = variables.map(variable => {
-                                if (subContext.doesVariableExist(variable)) {
-                                    throw new LanguageException(region, s"Variable ${variable} already exists")
-                                }
-                                val variableVariable = Variable(region, variable, VariableLocation.CaseCheck, false)
-                                subContext = subContext.addVariable(variableVariable)
-                                variableVariable
-                            })
-                            CaseCheck.Destructor(variable)
-                        }
-                        case HLCaseCheck.None() => {
-                            CaseCheck.None()
-                        }
-                    }
-                    BranchCaseCheck(
-                      ref.region,
-                      ref.tpe match {
-                          case obj: ObjectType => obj
-                          case _ => throw new LanguageException(ref.region, "cannot test against non objects")
-                      },
-                      check
-                    )
-                })
                 val (supIfTrue, _) = resolveExpression(ifTrue, subContext)
-                (Branch(region, supCondition, mappedCheck, supIfTrue, supIfFalse), context)
+                (Branch(region, supCondition, supIfTrue, supIfFalse), context)
             }
             case HLBinary(region, left, right, op) => {
                 val (supLeft, _) = resolveExpression(left, context)
@@ -793,6 +756,9 @@ object InferTransformer {
         function: DefaultFunction,
         selfType: Option[Type]
     ): DefaultFunction = {
+        if (function.modifier == Modifier.Native) {
+            return function;
+        }
         val context = TypeCheckContext(root, selfType, function.returnType, Map.empty)
 
         function.parameters.foreach(ref => {
@@ -1162,6 +1128,22 @@ object InferTransformer {
                             })
                         CallStaticFunction(region, path, returnType, expressionsList)
                     }
+                    case TypedFunction(region, objType, obj, name, path, args, ret) => {
+                        if (args.length != expressions.length) {
+                            throw new LanguageException(region, "Parameter count mismatch")
+                        }
+                        val expressionsList = args
+                            .zip(expressions)
+                            .map(ref => {
+                                val expr = resolveExpression(Some(ref._1), context, ref._2)
+                                val exprValue = ExpressionType.getType(expr)
+                                if (!Checker.isAssignable(context, ref._1, exprValue, true)) {
+                                    throw new LanguageTypeException(region, ref._1, exprValue)
+                                }
+                                expr
+                            })
+                        CallDynamicFunctionDirect(region, obj, path, ret, expressions)
+                    }
                     case _ => {
                         val callType = ExpressionType.getType(callValue)
                         callType match {
@@ -1180,7 +1162,7 @@ object InferTransformer {
                                         expr
                                     })
 
-                                CallDynamicFunction(region, callValue, ret, expressionsList)
+                                CallDynamicFunctionIndirect(region, callValue, ret, expressionsList)
                             }
                             case resolvable: Resolvable => {
                                 assert(!resolvable.isResolved, "Function type is resolved")
@@ -1188,7 +1170,7 @@ object InferTransformer {
                                 val exprTypes = newExpr.map(ref => ExpressionType.getType(ref))
                                 val returnTypeDef = hint.getOrElse(Resolvable(region))
                                 resolvable.resolve(FunctionType(region, exprTypes, returnTypeDef))
-                                CallDynamicFunction(region, callValue, returnTypeDef, newExpr)
+                                CallDynamicFunctionIndirect(region, callValue, returnTypeDef, newExpr)
                             }
                             case s => {
                                 throw new LanguageException(region, s"Cannot call ${s.getClass}")
@@ -1286,7 +1268,7 @@ object InferTransformer {
     }
 
     private def checkBranch(hint: Option[Type], context: TypeCheckContext, branch: Branch): Expression = branch match {
-        case Branch(region, condition, caseCheck, ifTrue, ifFalse) => {
+        case Branch(region, condition, ifTrue, ifFalse) => {
             def resolveBody(conditionChecked: Expression): TypedBranch = {
                 var typeHint = hint;
                 if (ifFalse.isEmpty) {
@@ -1338,66 +1320,19 @@ object InferTransformer {
                                 }
                             }
                         }
-                        TypedBranch(region, conditionChecked, None, ifTrueChecked, Some(yieldValue, ifFalseChecked))
+                        TypedBranch(region, conditionChecked, ifTrueChecked, Some(yieldValue, ifFalseChecked))
                     }
                     case None => {
-                        TypedBranch(region, conditionChecked, None, ifTrueChecked, None)
+                        TypedBranch(region, conditionChecked, ifTrueChecked, None)
                     }
                 }
             }
-            assert(caseCheck.isEmpty, "Case check is not implemented")
             val conditionChecked = resolveExpression(Some(BooleanType(region)), context, condition)
             val typeOfCondition = ExpressionType.getType(conditionChecked)
             if (!Checker.isAssignable(context, BooleanType(region), typeOfCondition, true)) {
                 throw new LanguageException(region, "Condition must be boolean")
             }
             resolveBody(conditionChecked)
-            /*            caseCheck match {
-                case Some(branchCaseCheck) => {
-                    if (branchCaseCheck.tpe.binds.nonEmpty) {
-                        throw new LanguageException(region, "Cannot have generic types in case check")
-                    }
-                    val foundClazz = context.root
-                        .locateClass(branchCaseCheck.tpe.path)
-                        .expectWithRegion(branchCaseCheck.region, "unit on path")
-                    val bounds = foundClazz.genericDefinition.map(ref => (ref, Resolvable(ref.region))).toMap
-                    val objectType = ObjectType(foundClazz.region, foundClazz.path, bounds)
-                    val conditionChecked = resolveExpression(Some(objectType), context, condition)
-                    val typeOfCondition = ExpressionType.getType(conditionChecked, context)
-                    Checker.isAssignable(context, typeOfCondition, objectType, true)
-                    bounds.foreach((key, value: Resolvable) => {
-                        if (!value.isResolved) {
-                            value.resolve(BaseType(value.getRegion()))
-                        }
-                    })
-                    branchCaseCheck.checkType match {
-                        case CaseCheck.Name(variable) => {
-                            context.addVariableType(variable, objectType)
-                        }
-                        case CaseCheck.Destructor(variables) => {
-                            if (variables.length != foundClazz.parameters.length) {
-                                throw new LanguageException(region, "Parameter count mismatch")
-                            }
-                            variables
-                                .zip(foundClazz.parameters)
-                                .foreach((variable, param) => {
-                                    context.addVariableType(variable, objectType.getTypeReplaced(param.tpe))
-                                })
-                        }
-                        case CaseCheck.None() => {}
-                    }
-                    resolveBody(conditionChecked)
-                }
-                case None => {
-                    val conditionChecked = resolveExpression(Some(BooleanType(region)), context, condition)
-                    val typeOfCondition = ExpressionType.getType(conditionChecked, context)
-                    if (!Checker.isAssignable(context, BooleanType(region), typeOfCondition, true)) {
-                        throw new LanguageException(region, "Condition must be boolean")
-                    }
-
-                    resolveBody(conditionChecked)
-                }
-            }*/
 
         }
     }
@@ -1661,7 +1596,7 @@ object ExpressionType {
                 case VarDef(region, variable, typeHint, value) => {
                     VoidType(region)
                 }
-                case TypedBranch(region, condition, caseCheck, ifTrue, ifFalse) => {
+                case TypedBranch(region, condition, ifTrue, ifFalse) => {
                     if (ifFalse.isDefined) {
                         ifFalse.get._1
                     } else {
@@ -1677,7 +1612,10 @@ object ExpressionType {
                 case TypedClosure(region, parameters, returnType, body) => {
                     FunctionType(region, parameters.map(ref => ref._2), returnType)
                 }
-                case CallDynamicFunction(region, left, returnType, expression) => {
+                case CallDynamicFunctionIndirect(region, left, returnType, expression) => {
+                    returnType
+                }
+                case CallDynamicFunctionDirect(region, left, path, returnType, expression) => {
                     returnType
                 }
                 case TypedBinary(region, left, right, op) => {
@@ -1748,7 +1686,6 @@ object ExpressionType {
 
 object FlowChecker {
 
-    @tailrec
     def getFlowType(expression: Expression): FlowType = {
         if (!expression.isInstanceOf[StageTyped]) {
             throw new LanguageException(expression.getRegion, s"Cannot get type ${expression.getClass}")
@@ -1760,7 +1697,21 @@ object FlowChecker {
             }
             case b: TypedBranch => {
                 if (b.ifFalse.isDefined) {
-                    FlowType.FlowValue(b.ifFalse.get._1)
+                    getFlowType(b.ifTrue) match {
+                        case FlowType.FlowReturn(tpe) => {
+                            getFlowType(b.ifFalse.get._2) match {
+                                case FlowType.FlowReturn(tpe) => {
+                                    FlowType.FlowReturn(tpe)
+                                }
+                                case FlowType.FlowValue(tpe) => {
+                                    FlowType.FlowValue(b.ifFalse.get._1)
+                                }
+                            }
+                        }
+                        case _ => {
+                            FlowType.FlowValue(b.ifFalse.get._1)
+                        }
+                    }
                 } else {
                     FlowType.FlowValue(VoidType(b.getRegion))
                 }

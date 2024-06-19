@@ -274,25 +274,10 @@ object HLExpressionParser {
             val condition = parse(ifNode("expression"))
             val thenExpression = parseBlock(ifNode("block"))
             val elseExpression = ifNode.get("branchOpt").map(ref => parse(ref("expression")))
-
-            val caseCheck = ifNode
-                .get("type")
-                .map(ref => {
-                    val caseCheck = if (ifNode.has("id")) {
-                        HLCaseCheck.Name(ifNode.id())
-                    } else if (ifNode.has("commaWordChain")) {
-                        HLCaseCheck.Destructor(parseCommaWordChain(ifNode("commaWordChain")))
-                    } else {
-                        HLCaseCheck.None()
-                    }
-                    val type_ = HLTypeParser.parse(ref)
-                    HLBranchCaseCheck(ref.region, type_, caseCheck)
-                })
-
+            
             HLBranch(
               node.region,
               condition,
-              caseCheck,
               thenExpression,
               elseExpression
             )

@@ -1,13 +1,32 @@
+fn main() -> int {
+    call_me()
+    return 0
+}
 
-fn main(input: int) -> int {
-    let a = new Test {
-        a: 1,
-        b: 2
+struct SomeObject {
+    time: int
+
+    fn get_half_time() -> int {
+        return self.time / 2
     }
+}
+
+fn call_me() -> int {
+    let array = [11 , 33, 99]
+    println(array[0])
+    println(array[1])
+    println(array[2])
+    let obj_array = [new SomeObject { time: get_time() }]
+    println(get_time())
+    let drop = new SomeObject { time: get_time() }
+    println(drop.get_half_time())
     0
 }
 
-struct Test {
-    a: int
-    b: int
+native fn get_time() -> int {
+
+}
+
+native fn println(i: int)  {
+
 }

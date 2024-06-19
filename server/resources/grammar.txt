@@ -4,7 +4,11 @@
 // Use parentheses to create sub expressions
 
 unit ::= item*
-item ::= import | class | function
+item ::= import | class | function | enum
+
+enum ::= "enum" id! genericHintDefinition? "{" enumMember* "}"!
+enumMember ::= id (  "(" (type ("," type!)* )? ")"! )?
+
 
 import ::= "import" dotWordChain!
 
@@ -64,7 +68,7 @@ closureTypeList ::= (closureType ("," closureType!)*)?
 closureType ::= id (":" type!)?
 
 
-if ::= "if" expression! ("matches" type! ( ("(" commaWordChain? ")"!) | id )?  )? block! branchOpt?
+if ::= "if" expression! block! branchOpt?
 branchOpt ::= "else" expression!
 
 for ::= "for" id! "in"! expression! block!

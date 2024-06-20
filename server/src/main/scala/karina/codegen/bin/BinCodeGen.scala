@@ -260,17 +260,18 @@ object BinCodeGen {
                 val instruction = Instruction.NewArray(reg, registers, tpe.getLowLevelType())
                 (codeFunction.addInstruction(instruction), reg)
             }
-            case TypedNew(region, tpe, elements) => {
-                var registers = List[Register]()
-                val codeFunction = elements.foldLeft(container) { (container, expr) =>
-                    val (fn, reg) = generateExpression(root, expr, container, registerPage)
-                    registers = registers :+ reg
-                    fn
-                }
-                val reg = registerPage.allocate()
-                registers.foreach(registerPage.free)
-                val instruction = Instruction.NewObject(reg, tpe.path.mkString("."), registers)
-                (codeFunction.addInstruction(instruction), reg)
+            case TypedNewObject(region, tpe, elements) => {
+//                var registers = List[Register]()
+//                val codeFunction = elements.foldLeft(container) { (container, expr) =>
+//                    val (fn, reg) = generateExpression(root, expr, container, registerPage)
+//                    registers = registers :+ reg
+//                    fn
+//                }
+//                val reg = registerPage.allocate()
+//                registers.foreach(registerPage.free)
+//                val instruction = Instruction.NewObject(reg, tpe.path.mkString("."), registers)
+//                (codeFunction.addInstruction(instruction), reg)
+                ???
             }
             case TypedField(region, objType, obj, fieldType, field) => {
                 val memObj = ObjectRepresentation.load(root, objType)
@@ -533,6 +534,9 @@ object BinCodeGen {
                 registerPage.free(left)
                 registerPage.free(indexReg)
                 (fn3.addInstruction(PutArray(left, indexReg, right)), -1)
+            }
+            case TypedNewEnum(region, owner, path) => {
+                (container, -1)
             }
         }
 

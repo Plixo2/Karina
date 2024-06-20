@@ -1,32 +1,16 @@
-fn main() -> int {
-    call_me()
-    return 0
+fn start() {
+    let a = 1 + 1.0
+    let obj = new SomeObject { time: 99, m: 0.0 }
+    let b = obj.time
+    return
 }
 
 struct SomeObject {
     time: int
+    m: float
 
-    fn get_half_time() -> int {
-        return self.time / 2
+    fn call_me() -> int {
+        return 0
     }
 }
 
-fn call_me() -> int {
-    let array = [11 , 33, 99]
-    println(array[0])
-    println(array[1])
-    println(array[2])
-    let obj_array = [new SomeObject { time: get_time() }]
-    println(get_time())
-    let drop = new SomeObject { time: get_time() }
-    println(drop.get_half_time())
-    0
-}
-
-native fn get_time() -> int {
-
-}
-
-native fn println(i: int)  {
-
-}

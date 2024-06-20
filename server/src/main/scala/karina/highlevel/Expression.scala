@@ -2,6 +2,7 @@ package karina.highlevel
 
 import karina.files.ObjectPath
 import karina.lexer.Region
+import karina.typed.EnumCase
 import karina.types.*
 
 sealed trait Stage {}
@@ -76,12 +77,24 @@ case class HLBranch(
 ) extends Expression(region)
     with StageNode
 
+case class HLMatch(region: Region, value: Expression, cases: List[HLCase])
+    extends Expression(region)
+    with StageNode
 
-enum HLCaseCheck {
-    case Name(name: String)
-    case Destructor(variables: List[String])
-    case None()
+enum HLCase {
+    case HLEnumCase(enumCase: String, names: List[String], body: Expression)
+    case HLDefaultCase(body: Expression)
 }
+
+case class VarMatch(region: Region, value: Expression, cases: List[VarCase])
+    extends Expression(region)
+        with StageVariable
+
+enum VarCase {
+    case VarEnumCase(enumCase: String, names: List[Variable], body: Expression)
+    case VarDefaultCase(body: Expression)
+}
+
 
 case class Branch(
     region: Region,
@@ -91,12 +104,6 @@ case class Branch(
 ) extends Expression(region)
     with StageVariable
 
-
-enum CaseCheck {
-    case Name(variable: Variable)
-    case Destructor(variables: List[Variable])
-    case None()
-}
 
 case class HLBinary(region: Region, left: Expression, right: Expression, op: BinaryOP)
     extends Expression(region)
@@ -174,9 +181,14 @@ case class PackagePath(region: Region, path: ObjectPath) extends Expression(regi
 case class UnitPath(region: Region, path: ObjectPath) extends Expression(region) with StageVariable
 
 case class TypedArray(region: Region, tpe: Type, elements: List[Expression]) extends Expression(region) with StageTyped
-case class TypedNew(region: Region, tpe: ObjectType, elements: List[Expression])
+case class TypedNewObject(region: Region, tpe: ObjectType, elements: List[(String, Expression)])
     extends Expression(region)
     with StageTyped
+
+case class TypedNewEnum(region: Region, tpe: EnumCaseType, elements: List[Expression])
+    extends Expression(region)
+        with StageTyped
+
 case class TypedField(region: Region, objType: ObjectType, obj: Expression, fieldType: Type, field: String)
     extends Expression(region)
     with StageTyped
@@ -333,6 +345,36 @@ enum TypedArithmeticOP {
             case IntGreater | IntGreaterEquals | IntLess | IntLessEquals | IntEquals | IntNotEquals =>
                 BooleanType(region)
             case BooleanEquals | BooleanNotEquals | BooleanAnd | BooleanOr => BooleanType(region)
+        }
+    }
+    
+    def toSymbol(): String = {
+        this match {
+            case FloatAdd => "+"
+            case FloatSubtract => "-"
+            case FloatDivide => "/"
+            case FloatMultiply => "*"
+            case FloatGreater => ">"
+            case FloatGreaterEquals => ">="
+            case FloatLess => "<"
+            case FloatLessEquals => "<="
+            case FloatEquals => "=="
+            case FloatNotEquals => "!="
+            case IntAdd => "+"
+            case IntSubtract => "-"
+            case IntDivide => "/"
+            case IntMultiply => "*"
+            case IntModulo => "%"
+            case IntGreater => ">"
+            case IntGreaterEquals => ">="
+            case IntLess => "<"
+            case IntLessEquals => "<="
+            case IntEquals => "=="
+            case IntNotEquals => "!="
+            case BooleanEquals => "=="
+            case BooleanNotEquals => "!="
+            case BooleanAnd => "&&"
+            case BooleanOr => "||"
         }
     }
 }

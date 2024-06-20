@@ -1,6 +1,5 @@
 package karina.typed
 
-import karina.LanguageException
 import karina.files.ObjectPath
 import karina.highlevel.*
 import karina.lexer.Region
@@ -39,6 +38,18 @@ trait ResourceTree {
         }
     }
 
+    def locateEnum(path: ObjectPath): Option[DefaultEnum] = {
+        locate(path) match {
+            case Some(Resource.EnumResource(dEnum)) => Some(dEnum)
+            case _                                  => None
+        }
+    }
+    def locateEnumCase(path: ObjectPath): Option[(DefaultEnum, EnumCase)] = {
+        locate(path) match {
+            case Some(Resource.EnumCaseResource(owner, enumCase)) => Some((owner, enumCase))
+            case _                                                => None
+        }
+    }
 
 }
 
@@ -46,6 +57,8 @@ enum Resource {
     case ClassResource(clazz: DefaultClass)
     case FunctionResource(function: DefaultFunction)
     case FieldResource(field: Field)
+    case EnumResource(dEnum: DefaultEnum)
+    case EnumCaseResource(owner: DefaultEnum, enumCase: EnumCase)
     case PackageResource(compilePackage: DefaultPackage)
     case CompileUnitResource(unit: DefaultUnit)
     case ImportResource(imported: Import)
@@ -96,7 +109,7 @@ case class DefaultPackage(
     }
     def flatUnits(): List[DefaultUnit] = {
         units ++ subPackages.flatMap(_.flatUnits())
-        
+
     }
 
 }
@@ -107,6 +120,7 @@ case class DefaultUnit(
     path: ObjectPath,
     allImports: List[Import],
     classes: List[DefaultClass],
+    enums: List[DefaultEnum],
     allFunctions: List[DefaultFunction]
 ) extends ResourceTree {
 
@@ -135,6 +149,17 @@ case class DefaultUnit(
                           None
                       }
                   })
+                  .orElse(
+                    enums
+                        .find(_.name() == name)
+                        .flatMap(value => {
+                            if (path.tail.isEmpty) {
+                                Some(Resource.EnumResource(value))
+                            } else {
+                                value.locate(path.tail.get)
+                            }
+                        })
+                  )
             )
     }
 
@@ -177,7 +202,29 @@ case class DefaultFunction(
             }${definedGenerics.map(_.toString).mkString("<", ", ", ">")} $functionName($params): $returnType = ..."
     }
 
+}
 
+case class DefaultEnum(
+    region: Region,
+    enumName: String,
+    path: ObjectPath,
+    genericDefinition: List[GenericType],
+    enums: List[EnumCase]
+) extends ResourceTree {
+    override def name(): String = enumName
+    override def locate(path: ObjectPath): Option[Resource] = {
+        val name = path.head
+        enums.find(_.name == name) match {
+            case Some(value) => {
+                Some(Resource.EnumCaseResource(this, value))
+            }
+            case None => None
+        }
+    }
+
+    override def allChildren(): List[Resource] = {
+        List()
+    }
 }
 
 case class DefaultClass(
@@ -186,7 +233,7 @@ case class DefaultClass(
     path: ObjectPath,
     genericDefinition: List[GenericType],
     fields: List[Field],
-    functions: List[DefaultFunction],
+    functions: List[DefaultFunction]
 ) extends ResourceTree {
     override def name(): String = className
     override def locate(path: ObjectPath): Option[Resource] = {
@@ -222,6 +269,8 @@ case class DefaultClass(
 case class Parameter(region: Region, name: String, tpe: Type, variableObject: Option[Variable])
 
 case class Import(region: Region, path: ObjectPath) {}
+
+case class EnumCase(region: Region, path: ObjectPath, name: String, types: List[Type]) {}
 
 case class Field(region: Region, name: String, tpe: Type) {
     override def toString: String = s"$name: $tpe"

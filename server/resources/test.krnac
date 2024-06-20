@@ -11,34 +11,31 @@ fn test.main r1 ():i {
 }
 
 
-fn test.call_me r5 ():i {
-    load_int 0 11
-    load_int 1 33
-    load_int 2 99
-    new_array 0 [0, 1, 2] i
-    def_var 0 0 p
+fn test.call_me r3 ():i {
+    load_int 0 2000
+    call_static 1 test.Some [0]
+    call_static 0 test.call_with [1]
+    call_static 1 test.None []
+    call_static 2 test.call_with [1]
+    binary IntAdd 0 0 2
+    load_int 0 0
+    return_value 0
+}
+
+
+fn test.call_with r2 (p):i {
     load_int 1 0
-    array_index 1 0 1
-    call_static 2 test.println [1]
-    load_int 1 1
-    array_index 1 0 1
-    call_static 2 test.println [1]
-    load_int 1 2
-    array_index 1 0 1
-    call_static 2 test.println [1]
-    call_static 1 test.get_time []
-    new_object 2 test.SomeObject [1]
-    new_array 1 [2] p
-    def_var 1 1 p
-    call_static 2 test.get_time []
-    call_static 3 test.println [2]
-    call_static 2 test.get_time []
-    new_object 3 test.SomeObject [2]
-    def_var 2 3 p
-    call_dynamic_direct 3 test.SomeObject.get_half_time [2]
-    call_static 4 test.println [3]
-    load_int 3 0
-    return_value 3
+    return_value 1
+}
+
+
+fn test.Some r1 (i):p {
+    return_value -1
+}
+
+
+fn test.None r1 ():p {
+    return_value -1
 }
 
 

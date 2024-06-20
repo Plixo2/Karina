@@ -47,14 +47,13 @@ multiplicativeExpression ::= unaryExpression (("*" | "/" | "%") multiplicativeEx
 unaryExpression ::= ("-" | "!") factor! | factor
 factor ::= object postFix* ("=" expression!)?
 postFix ::= "." id! | "(" expressionList! ")"! | "[" expression! "]"!
-object ::= if | while | for | block | array | "(" expression! ")"! | number | "break" | id | stringLiteral | "self" | "super" | new | "true" | "false"
+object ::= match | if | while | for | block | array | "(" expression! ")"! | number | "break" | id | stringLiteral | "self" | "super" | new | "true" | "false"
 
 
 match ::= "match" expression! "{"! matchCase* "}"!
-matchCase ::= (matchDestructor | matchType | matchElse) "->"! expression!
+matchCase ::= (matchDestructor | matchElse) "->"! expression!
 
 matchDestructor ::= id "(" commaWordChain? ")"!
-matchType ::= id ":" type!
 matchElse ::= "_"
 
 new ::= "new" type! ( "{" initList! "}"! )?

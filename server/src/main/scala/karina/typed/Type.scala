@@ -2,20 +2,19 @@ package karina.types
 
 import karina.LanguageException
 import karina.files.ObjectPath
-import karina.highlevel.TypedStaticFunction
 import karina.lexer.Region
-import karina.typed.{DefaultFunction, DefaultPackage, expectWithRegion}
+import karina.typed.{DefaultPackage, expectWithRegion}
 
 sealed trait Type {
     def getRegion(): Region
-    
+
     def getLowLevelType(): String = {
         this match {
-            case FloatType(_)                 => "f"
-            case VoidType(_)                  => "v"
-            case IntegerType(_)               => "i"
-            case BooleanType(_)               => "i"
-            case _ => "p"
+            case FloatType(_)   => "f"
+            case VoidType(_)    => "v"
+            case IntegerType(_) => "i"
+            case BooleanType(_) => "i"
+            case _              => "p"
         }
     }
 }
@@ -44,17 +43,19 @@ case class FunctionType(region: Region, args: List[Type], ret: Type) extends Typ
 enum GenericSource {
     case Class(path: ObjectPath)
     case Function(path: ObjectPath)
-    
+
     def equals(other: GenericSource): Boolean = {
         this match {
-            case Class(path) => other match {
-                case Class(path2) => path.equals(path2)
-                case _ => false
-            }
-            case Function(path) => other match {
-                case Function(path2) => path.equals(path2)
-                case _ => false
-            }
+            case Class(path) =>
+                other match {
+                    case Class(path2) => path.equals(path2)
+                    case _            => false
+                }
+            case Function(path) =>
+                other match {
+                    case Function(path2) => path.equals(path2)
+                    case _               => false
+                }
         }
     }
 }
@@ -139,7 +140,6 @@ case class ObjectType(region: Region, path: ObjectPath, binds: Map[GenericType, 
     def getTypeReplaced(tpe: Type): Type = {
         getReplacedType(tpe, binds)
     }
-    
 
     def getField(root: DefaultPackage, name: String): Option[Type] = {
         val classes = root.locateClass(path).expectWithRegion(region, "Getting path")
@@ -169,6 +169,34 @@ case class ObjectType(region: Region, path: ObjectPath, binds: Map[GenericType, 
 
 }
 
+case class EnumType(region: Region, path: ObjectPath, binds: Map[GenericType, Type]) extends Type {
+
+    def getTypeReplaced(tpe: Type): Type = {
+        getReplacedType(tpe, binds)
+    }
+
+    override def toString: String = {
+        s"enum ${path.toString}${
+                if (binds.nonEmpty) binds.map { case (k, v) => s"$k -> $v" }.mkString("{", ", ", "}") else ""
+            }"
+    }
+
+    override def getRegion(): Region = region
+}
+
+case class EnumCaseType(region: Region, owner: EnumType, path: ObjectPath) extends Type {
+
+    def getTypeReplaced(tpe: Type): Type = {
+        getReplacedType(tpe, owner.binds)
+    }
+
+    override def toString: String = {
+        s"${path.toString} of ${owner.toString}"
+    }
+
+    override def getRegion(): Region = region
+}
+
 def getReplacedType(tpe: Type, binds: Map[GenericType, Type]): Type = {
     tpe match {
         case ObjectTypeDefault(region, path, generics) =>
@@ -182,16 +210,24 @@ def getReplacedType(tpe: Type, binds: Map[GenericType, Type]): Type = {
         }
         case FunctionType(region, args, ret) =>
             FunctionType(region, args.map(ref => getReplacedType(ref, binds)), getReplacedType(ret, binds))
-        case ArrayType(region, t)            => ArrayType(region, getReplacedType(t, binds))
-        case FloatType(region)               => FloatType(region)
-        case VoidType(region)                => VoidType(region)
-        case IntegerType(region)             => IntegerType(region)
-        case StringType(region)              => StringType(region)
-        case BooleanType(region)             => BooleanType(region)
-        case resolvable: Resolvable          => resolvable
+        case ArrayType(region, t)   => ArrayType(region, getReplacedType(t, binds))
+        case FloatType(region)      => FloatType(region)
+        case VoidType(region)       => VoidType(region)
+        case IntegerType(region)    => IntegerType(region)
+        case StringType(region)     => StringType(region)
+        case BooleanType(region)    => BooleanType(region)
+        case resolvable: Resolvable => resolvable
         case ObjectType(region, path, sbinds) => {
             val replaced = sbinds.map(ref => (ref._1, getReplacedType(ref._2, binds)))
             ObjectType(region, path, replaced)
+        }
+        case EnumType(region, path, sbinds) => {
+            val replaced = sbinds.map(ref => (ref._1, getReplacedType(ref._2, binds)))
+            EnumType(region, path, replaced)
+        }
+        case EnumCaseType(region, owner, path) => {
+            val replaced = getReplacedType(owner, binds).asInstanceOf[EnumType]
+            EnumCaseType(region, replaced, path)
         }
         case BaseType(region) => BaseType(region)
     }

@@ -146,8 +146,33 @@ object Checker {
                     case _ => false
                 }
             }
+            case EnumType(region, path, binds) => {
+                b match {
+                    case EnumType(region, subPath, subBinds) => {
+                        if (path.equals(subPath)) {
+                            if (binds.size != subBinds.size) {
+                                return false
+                            }
+                            val genericsBounds = binds.map((k, left) => {
+                                val right = subBinds(k)
+                                (right, left)
+                            })
+                            genericsBounds.foldLeft(true)((acc, tuple) => {
+                                if (!acc) {
+                                    false
+                                } else {
+                                    isAssignable(context, tuple._1, tuple._2, mutate)
+                                }
+                            })
+                        } else {
+                            false
+                        }
+                    }
+                    case _ => false
+                }
+            }
             case BaseType(region) => {
-                true
+                false
             }
         }
     }

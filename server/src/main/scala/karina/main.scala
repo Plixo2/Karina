@@ -4,7 +4,7 @@ import karina.files.readFile
 
 @main
 def main(): Unit = {
-    val startTime = System.nanoTime()
+    val startTime = System.nanoTime() 
 
     val testFile = readFile("resources/test.krna");
     val grammar = readFile("resources/grammar.txt");

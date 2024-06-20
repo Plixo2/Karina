@@ -1,6 +1,7 @@
 package karina
 
 import karina.codegen.bin.{BinCodeGen, BinPrinterPlain}
+import karina.codegen.rust.{RustCodeGen, RustPrinter}
 import karina.files.{InternalFile, ObjectPath, readFile}
 import karina.highlevel.*
 import karina.lexer.*
@@ -33,8 +34,10 @@ object FrontEnd {
         val types = TypeResolveTransformer.resolve(default)
         val variables = VariableResolveTransformer.resolve(types)
         val typed = InferTransformer.resolve(variables)
-        val code = BinCodeGen.generate(typed)
-        BinPrinterPlain.write("test.main", code, "resources/test.krnac")
+//        val code = BinCodeGen.generate(typed)
+//        BinPrinterPlain.write("test.main", code, "resources/test.krnac")
+        val rustGen = RustCodeGen.generate(typed, "start")
+        RustPrinter.write(rustGen, "resources/src/main.rs")
     }
 
     

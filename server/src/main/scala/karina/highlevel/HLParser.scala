@@ -17,6 +17,7 @@ object HLParser {
         var imports = List[HLImport]()
         var classes = List[HLStruct]()
         var functions = List[HLFunction]()
+        var enums = List[HLEnum]()
         val items = node.getAll("item")
         items.foreach(item => {
             if (item.has("import")) {
@@ -27,11 +28,13 @@ object HLParser {
                 classes = classes :+ parseClass(item("class"))
             } else if (item.has("function")) {
                 functions = functions :+ parseFunction(item("function"))
-            } else {
+            } else if (item.has("enum")) {
+                enums = enums :+ parseEnum(item("enum"))
+            }else {
                 throw new LanguageException(item.region, "Unknown item type")
             }
         });
-        HLUnit(node.region, imports, classes, functions)
+        HLUnit(node.region, imports, classes, enums, functions)
     }
 
     private def parseClass(node: Node): HLStruct = {
@@ -79,6 +82,18 @@ object HLParser {
         val returnType = node.get("type").map(HLTypeParser.parse).getOrElse(VoidType(node("id").region))
 
         HLFunction(node.region, name, mods, genHint, parameters, returnType, expression)
+    }
+
+    private def parseEnum(node: Node): HLEnum = {
+        node.assertType("enum")
+        val enumName = node.id()
+        val genericHint = node.get("genericHintDefinition").map(parseGenericHintDefinition)
+        val enumCases = node.getAll("enumMember").map(ref => {
+            val name = ref.id()
+            val types = ref.getAll("type").map(HLTypeParser.parse)
+            HLEnumCase(ref.region, name, types)
+        })
+        HLEnum(node.region, enumName, genericHint, enumCases)
     }
 
     def parseInitList(node: Node): List[HLInitMember] = {

@@ -5,18 +5,18 @@ import karina.lexer.Region
 import karina.types.Type
 
 case class HLStruct(
-                      region: Region,
-                      name: String,
-                      genericHint: Option[HLGenericDefinition],
-                      fields: List[HLField],
-                      functions: List[HLFunction]
+    region: Region,
+    name: String,
+    genericHint: Option[HLGenericDefinition],
+    fields: List[HLField],
+    functions: List[HLFunction]
 ) {}
 
 case class HLEnum(
-                   region: Region,
-                   name: String,
-                   genericHint: Option[HLGenericDefinition],
-                   cases: List[HLEnumCase]
+    region: Region,
+    name: String,
+    genericHint: Option[HLGenericDefinition],
+    cases: List[HLEnumCase]
 ) {}
 
 case class HLEnumCase(region: Region, name: String, types: List[Type]) {}
@@ -27,10 +27,15 @@ case class HLField(region: Region, name: String, tpe: Type) {}
 
 case class HLImport(region: Region, path: ObjectPath) {}
 
-case class HLUnit(region: Region, imports: List[HLImport], classes: List[HLStruct], functions: List[HLFunction]) {}
+case class HLUnit(
+    region: Region,
+    imports: List[HLImport],
+    classes: List[HLStruct],
+    enums: List[HLEnum],
+    functions: List[HLFunction]
+) {}
 
-case class HLPackage(name: String, units: List[(String, HLUnit)], subPackages: List[HLPackage]) {
-}
+case class HLPackage(name: String, units: List[(String, HLUnit)], subPackages: List[HLPackage]) {}
 
 case class HLFunction(
     region: Region,

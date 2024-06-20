@@ -11,39 +11,38 @@ import karina.types.*
 import karina.{LanguageException, LanguageTypeException}
 
 import scala.annotation.tailrec
-import scala.collection.parallel.CollectionConverters.*
-
 
 object TypedTransformer {
     def toTypedRoot(hlPackage: HLPackage): DefaultPackage = {
         val subPath = ObjectPath(List(), allowEmpty = true)
         DefaultPackage(
-            hlPackage.name,
-            subPath,
-            hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
-            hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
+          hlPackage.name,
+          subPath,
+          hlPackage.units.map(ref => toTypedUnit(subPath, ref._1, ref._2)),
+          hlPackage.subPackages.map(ref => toTypedPackage(subPath, ref))
         )
     }
 
     private def toTypedPackage(path: ObjectPath, hlPackage: HLPackage): DefaultPackage = {
         val subPath = path.add(hlPackage.name)
         DefaultPackage(
-            hlPackage.name,
-            subPath,
-            hlPackage.units.par.map(ref => toTypedUnit(subPath, ref._1, ref._2)).toList,
-            hlPackage.subPackages.par.map(ref => toTypedPackage(subPath, ref)).toList
+          hlPackage.name,
+          subPath,
+          hlPackage.units.map(ref => toTypedUnit(subPath, ref._1, ref._2)),
+          hlPackage.subPackages.map(ref => toTypedPackage(subPath, ref))
         )
     }
 
     private def toTypedUnit(path: ObjectPath, name: String, hlUnit: HLUnit): DefaultUnit = {
         val subPath = path.add(name)
         DefaultUnit(
-            hlUnit.region,
-            name,
-            subPath,
-            hlUnit.imports.par.map(ref => Import(ref.region, ref.path)).toList,
-            hlUnit.classes.par.map(ref => toTypedClass(subPath, ref)).toList,
-            hlUnit.functions.par.map(ref => toTypedFunction(subPath, true, ref)).toList
+          hlUnit.region,
+          name,
+          subPath,
+          hlUnit.imports.map(ref => Import(ref.region, ref.path)),
+          hlUnit.classes.map(ref => toTypedClass(subPath, ref)),
+          hlUnit.enums.map(ref => toTypedEnum(subPath, ref)),
+          hlUnit.functions.map(ref => toTypedFunction(subPath, true, ref))
         )
     }
 
@@ -59,6 +58,17 @@ object TypedTransformer {
         DefaultClass(hlClass.region, hlClass.name, subPath, definedGenerics, fields, functions)
     }
 
+    private def toTypedEnum(path: ObjectPath, hlEnum: HLEnum): DefaultEnum = {
+        val subPath = path.add(hlEnum.name)
+        val definedGenerics = hlEnum.genericHint
+            .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Class(subPath))))
+            .getOrElse(List())
+        val cases = hlEnum.cases.map(ref => {
+            EnumCase(ref.region, subPath.add(ref.name), ref.name, ref.types)
+        })
+        DefaultEnum(hlEnum.region, hlEnum.name, subPath, definedGenerics, cases)
+    }
+
     private def toTypedFunction(path: ObjectPath, isStatic: Boolean, hlFunction: HLFunction): DefaultFunction = {
         val subPath = path.add(hlFunction.name)
         val returnType = hlFunction.returnType
@@ -67,15 +77,15 @@ object TypedTransformer {
             .map(ref => ref.names.map(name => GenericType(ref.region, name, GenericSource.Function(subPath))))
             .getOrElse(List())
         DefaultFunction(
-            hlFunction.region,
-            isStatic,
-            hlFunction.name,
-            subPath,
-            hlFunction.modifier,
-            returnType,
-            parameters,
-            definedGenerics,
-            hlFunction.expression
+          hlFunction.region,
+          isStatic,
+          hlFunction.name,
+          subPath,
+          hlFunction.modifier,
+          returnType,
+          parameters,
+          definedGenerics,
+          hlFunction.expression
         )
     }
 }
@@ -130,8 +140,9 @@ object TypeResolveTransformer {
           unit.unitName,
           unit.path,
           unit.allImports,
-          unit.classes.map(ref => resolveClass(root, typeLookup, ref)).toList,
-          unit.allFunctions.map(ref => resolveFunction(root, typeLookup, ref)).toList
+          unit.classes.map(ref => resolveClass(root, typeLookup, ref)),
+          unit.enums.map(ref => resolveEnum(root, typeLookup, ref)),
+          unit.allFunctions.map(ref => resolveFunction(root, typeLookup, ref))
         )
     }
 
@@ -142,16 +153,33 @@ object TypeResolveTransformer {
           clazz.className,
           clazz.path,
           clazz.genericDefinition,
-          clazz.fields.par
+          clazz.fields
               .map(ref => {
                   Field(
                     ref.region,
                     ref.name,
-                    resolveType(ref.tpe, typeLookupGeneric),
+                    resolveType(ref.tpe, typeLookupGeneric)
                   )
-              })
-              .toList,
+              }),
           clazz.functions.map(ref => resolveFunction(root, typeLookupGeneric, ref))
+        )
+    }
+
+    private def resolveEnum(root: DefaultPackage, typeLookup: TypeLookup, dEnum: DefaultEnum): DefaultEnum = {
+        val typeLookupGeneric = typeLookup.addGenericTypes(dEnum.genericDefinition)
+        DefaultEnum(
+          dEnum.region,
+          dEnum.enumName,
+          dEnum.path,
+          dEnum.genericDefinition,
+          dEnum.enums.map(ref => {
+              EnumCase(
+                ref.region,
+                ref.path,
+                ref.name,
+                ref.types.map(ref => resolveType(ref, typeLookupGeneric))
+              )
+          })
         )
     }
 
@@ -182,13 +210,54 @@ object TypeResolveTransformer {
                     if (resolvedGenerics.isEmpty) {
                         ObjectType(region, clazz.path, Map.empty)
                     } else {
-
                         if (clazz.genericDefinition.length != resolvedGenerics.length) {
-                            throw new NullPointerException(s"Generic count mismatch for class $path")
+                            throw new LanguageException(region, s"Generic count mismatch for class $path")
                         }
                         val map = clazz.genericDefinition.zip(resolvedGenerics).toMap
                         ObjectType(region, clazz.path, map)
                     }
+                }
+
+                def toEnum(dEnum: DefaultEnum): EnumType = {
+                    if (resolvedGenerics.isEmpty) {
+                        EnumType(region, dEnum.path, Map.empty)
+                    } else {
+                        if (dEnum.genericDefinition.length != resolvedGenerics.length) {
+                            throw new LanguageException(region, s"Generic count mismatch for class $path")
+                        }
+                        val map = dEnum.genericDefinition.zip(resolvedGenerics).toMap
+                        EnumType(region, dEnum.path, map)
+                    }
+                }
+
+                def toEnumCase(dEnum: DefaultEnum, enumCase: EnumCase): EnumCaseType = {
+                    EnumCaseType(region, toEnum(dEnum), enumCase.path)
+                }
+
+                lookup.root.locateEnumCase(path) match {
+                    case Some(ref) => return toEnumCase(ref._1, ref._2)
+                    case None => ()
+                }
+                lookup.unit.locateEnumCase(path) match {
+                    case Some(ref) => return toEnumCase(ref._1, ref._2)
+                    case None => ()
+                }
+
+                lookup.root.locateEnum(path) match {
+                    case Some(clazz) => return toEnum(clazz)
+                    case None => ()
+                }
+                lookup.unit.locateEnum(path) match {
+                    case Some(clazz) => return toEnum(clazz)
+                    case None => ()
+                }
+                lookup.root.locateEnum(path) match {
+                    case Some(clazz) => return toEnum(clazz)
+                    case None => ()
+                }
+                lookup.unit.locateEnum(path) match {
+                    case Some(clazz) => return toEnum(clazz)
+                    case None => ()
                 }
 
                 lookup.root.locateClass(path) match {
@@ -200,7 +269,7 @@ object TypeResolveTransformer {
                     case None        => ()
                 }
                 if (path.length != 1) {
-                    throw new NullPointerException(s"Cannot resolve class $path")
+                    throw new LanguageException(region, s"Cannot resolve class $path")
                 }
                 val name = path.head
                 lookup.importedTypes.get(name) match {
@@ -213,7 +282,7 @@ object TypeResolveTransformer {
                 }
                 throw new LanguageException(region, s"Cannot resolve type $path")
             }
-            case GenericType(region, name, source) => {
+            case GenericType(region, _, _) => {
                 throw new LanguageException(region, "Cannot resolve generic type")
             }
             case FunctionType(region, args, ret) => {
@@ -228,13 +297,18 @@ object TypeResolveTransformer {
             case StringType(_)    => tpe
             case BooleanType(_)   => tpe
             case BaseType(region) => tpe
-            case ObjectType(region, path, binds) => {
+            case ObjectType(region, _, _) => {
                 throw new LanguageException(region, "Cannot resolve object type")
             }
             case r: Resolvable => {
                 throw new LanguageException(r.getRegion(), "Cannot resolve Resolvable")
             }
-
+            case EnumType(region, _, _) => {
+                throw new LanguageException(region, "Cannot resolve enum type")
+            }
+            case EnumCaseType(region, _, _) => {
+                throw new LanguageException(region, "Cannot resolve enum case type")
+            }
         }
     }
 
@@ -335,6 +409,24 @@ object TypeResolveTransformer {
             case Assign(region, left, right) => {
                 Assign(region, resolveExpression(left, lookup), resolveExpression(right, lookup))
             }
+            case HLMatch(region, value, cases) => {
+                HLMatch(
+                  region,
+                  resolveExpression(value, lookup),
+                  cases.map {
+                      case HLCase.HLEnumCase(enumCase, names, body) => {
+                          HLCase.HLEnumCase(
+                              enumCase,
+                              names,
+                              resolveExpression(body, lookup)
+                          )
+                      }
+                      case HLCase.HLDefaultCase(body) => {
+                          HLCase.HLDefaultCase(resolveExpression(body, lookup))
+                      }
+                  }
+                )
+            }
         }
     }
 
@@ -410,8 +502,9 @@ object VariableResolveTransformer {
           unit.unitName,
           unit.path,
           unit.allImports,
-          unit.classes.map(ref => resolveClass(root, ref, importedFunctions)).toList,
-          unit.allFunctions.map(ref => resolveFunction(root, ref, importedFunctions)).toList
+          unit.classes.map(ref => resolveClass(root, ref, importedFunctions)),
+          unit.enums,
+          unit.allFunctions.map(ref => resolveFunction(root, ref, importedFunctions))
         )
     }
 
@@ -427,10 +520,8 @@ object VariableResolveTransformer {
           clazz.className,
           clazz.path,
           clazz.genericDefinition,
-          clazz.fields.map(ref =>
-              Field(ref.region, ref.name, ref.tpe)
-          ),
-          clazz.functions.map(ref => resolveFunction(root, ref, importedFunctions)),
+          clazz.fields.map(ref => Field(ref.region, ref.name, ref.tpe)),
+          clazz.functions.map(ref => resolveFunction(root, ref, importedFunctions))
         )
     }
 
@@ -659,6 +750,23 @@ object VariableResolveTransformer {
                   Assign(region, resolveExpression(left, context)._1, resolveExpression(right, context)._1),
                   context
                 )
+            case HLMatch(region, expr, cases) => {
+                val varCases = cases.map {
+                    case HLCase.HLEnumCase(enumCase, names, body) => {
+                        val value = List()
+                        var currentContext = context
+                        for (name <- names) {
+                            currentContext = currentContext.addVariable(Variable(region, name, VariableLocation.Local, false))
+                        }
+                        VarCase.VarEnumCase(enumCase, value, resolveExpression(body, currentContext)._1)
+                    }
+                    case HLCase.HLDefaultCase(body) => {
+                        VarCase.VarDefaultCase(resolveExpression(body, context)._1)
+                    }
+                }
+                val statement = VarMatch(region, resolveExpression(expr, context)._1, varCases)
+                (statement, context)
+            }
         }
     }
 
@@ -725,6 +833,7 @@ object InferTransformer {
           unit.path,
           unit.allImports,
           unit.classes.map(ref => resolveClass(root, ref)),
+          unit.enums,
           unit.allFunctions.map(ref => resolveFunction(root, ref, None))
         )
     }
@@ -747,7 +856,7 @@ object InferTransformer {
                 ref.tpe
               )
           ),
-          clazz.functions.map(ref => resolveFunction(root, ref, Some(selfType))),
+          clazz.functions.map(ref => resolveFunction(root, ref, Some(selfType)))
         )
     }
 
@@ -943,7 +1052,7 @@ object InferTransformer {
             case HLNew(region, tpe, initList) => {
                 tpe match {
                     case ObjectType(region, path, binds) => {
-                        val clazz = context.root.locateClass(path).expectWithRegion(region, "unit on path")
+                        val clazz = context.root.locateClass(path).expectWithRegion(region, "class on path")
                         var bindings = Map[GenericType, Type]()
                         clazz.genericDefinition.foreach(ref => {
                             if (binds.contains(ref)) {
@@ -956,7 +1065,7 @@ object InferTransformer {
                         if (clazz.fields.length != initList.length) {
                             throw new LanguageException(region, "Parameter count mismatch")
                         }
-                        var sortedParameterExpressions = List[Expression]()
+                        var sortedParameterExpressions = List[(String, Expression)]()
                         var unInitFields = clazz.fields
                         initList.foreach(ref => {
                             unInitFields.find(param => ref.name == param.name) match {
@@ -967,7 +1076,7 @@ object InferTransformer {
                                     if (!Checker.isAssignable(context, expectedType, typeOfExpression, true)) {
                                         throw new LanguageTypeException(region, expectedType, typeOfExpression)
                                     }
-                                    sortedParameterExpressions = sortedParameterExpressions :+ expressionValue
+                                    sortedParameterExpressions = sortedParameterExpressions :+ (value.name, expressionValue)
                                 }
                                 case None => {
                                     throw new LanguageException(region, "Parameter not found")
@@ -976,8 +1085,36 @@ object InferTransformer {
                             unInitFields = unInitFields.filterNot(param => ref.name == param.name)
                         })
                         assert(unInitFields.isEmpty, "Not all fields are initialized")
-                        TypedNew(region, boundObject, sortedParameterExpressions)
+                        TypedNewObject(region, boundObject, sortedParameterExpressions)
                     }
+                    case EnumCaseType(region, owner, path) => {
+                        val (owning, enumCase) = context.root.locateEnumCase(path).expectWithRegion(region, "enum on path")
+                        var bindings = Map[GenericType, Type]()
+                        owning.genericDefinition.foreach(ref => {
+                            if (owner.binds.contains(ref)) {
+                                bindings = bindings + (ref -> owner.binds(ref))
+                            } else {
+                                bindings = bindings + (ref -> Resolvable(ref.region))
+                            }
+                        })
+                        val boundEnum = EnumType(region, owning.path, bindings)
+                        val boundObject = EnumCaseType(region, boundEnum, path)
+                        if (enumCase.types.length != initList.length) {
+                            throw new LanguageException(region, "Parameter count mismatch")
+                        }
+                        var values = List[Expression]()
+                        enumCase.types.zip(initList).foreach(ref => {
+                            val expectedType = boundObject.getTypeReplaced(ref._1)
+                            val expressionValue = resolveExpression(Some(expectedType), context, ref._2.value)
+                            val typeOfExpression = ExpressionType.getType(expressionValue)
+                            if (!Checker.isAssignable(context, expectedType, typeOfExpression, true)) {
+                                throw new LanguageTypeException(region, expectedType, typeOfExpression)
+                            }
+                            values = values :+ expressionValue
+                        })
+                        TypedNewEnum(region, boundObject, values)
+                    }
+
                     case _ => {
                         throw new LanguageException(region, s"Cannot only create objects with 'new' ${tpe.getClass}")
                     }
@@ -1263,6 +1400,20 @@ object InferTransformer {
                         throw new LanguageException(region, "Cannot assign")
                     }
                 }
+            }
+            case VarMatch(region, value, cases) => {
+                val valueChecked = resolveExpression(None, context, value)
+                val valueType = ExpressionType.getType(valueChecked)
+//                val caseTypes = cases.map {
+//                    case VarCase.VarEnumCase(enumCase, values, body) => {
+////                        val (owning, enumCase) = context.root.locateEnum(enumCase).expectWithRegion(region, "enum on path")
+//                        ???
+//                    }
+//                    case _ => {
+//                        throw new LanguageException(region, "Only enum cases are supported")
+//                    }
+//                }
+                ???
             }
         }
     }
@@ -1574,7 +1725,7 @@ object ExpressionType {
                 case TypedVariableLink(region, variable, varType) => {
                     varType
                 }
-                case TypedNew(region, tpe, elements) => {
+                case TypedNewObject(region, tpe, elements) => {
                     tpe
                 }
                 case TypedField(region, obj, _, tpe, name) => {
@@ -1648,6 +1799,7 @@ object ExpressionType {
                 case TypedAssignVariable(region, _, _, _)    => VoidType(region)
                 case TypedAssignField(region, _, _, _, _, _) => VoidType(region)
                 case TypedAssignArray(region, _, _, _)       => VoidType(region)
+                case TypedNewEnum(region, tpe, _)    => tpe.owner
             }
         }
 
@@ -1732,7 +1884,6 @@ object FlowChecker {
         case FlowValue(tpe: Type)
     }
 }
-
 
 extension [T](option: Option[T]) {
     def expectWithRegion(region: Region, msg: String): T = option.getOrElse {
